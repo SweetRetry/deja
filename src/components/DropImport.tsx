@@ -6,7 +6,7 @@ import { mayCarryImage, readDrop } from "@/lib/drop";
 import type { ImportItem } from "@/lib/types";
 
 /** `error` is already worded for the user. */
-export type DropResult = { imported: string[]; existing: string[] } | { error: string };
+export type DropResult = { imported: string[] } | { error: string };
 
 type Props = {
   /** Where a drop lands, as the user reads it; null while no folder is open. */
@@ -16,13 +16,6 @@ type Props = {
   /** Resolves to a worded error, or null once the files are gone. */
   onUndo: (relPaths: string[]) => Promise<string | null>;
 };
-
-/** What the drop did, in one line: new files, files the vault already had, or both. */
-function summary(imported: number, existing: number, folder: string | null): string {
-  if (imported > 0 && existing > 0) return `已导入 ${imported} 项，${existing} 项已在素材库中`;
-  if (imported > 0) return `已导入 ${imported} 项到「${folder}」`;
-  return existing === 1 ? "素材库里已有这张图" : `这 ${existing} 项已在素材库中`;
-}
 
 /**
  * Listens on the whole window so an image dragged out of a browser can be let
@@ -73,9 +66,9 @@ export function DropImport({ target, onDrop, onLocate, onUndo }: Props) {
           toast.error(result.error, { id });
           return;
         }
-        const locate = result.imported[0] ?? result.existing[0];
         const undo = result.imported;
-        toast.success(summary(undo.length, result.existing.length, folder), {
+        const locate = undo[0];
+        toast.success(`已导入 ${undo.length} 项到「${folder}」`, {
           id,
           duration: 6000,
           action: locate
@@ -88,18 +81,15 @@ export function DropImport({ target, onDrop, onLocate, onUndo }: Props) {
                 },
               }
             : undefined,
-          cancel:
-            undo.length > 0
-              ? {
-                  label: "撤回",
-                  onClick: () => {
-                    const undoing = toast.loading("正在撤回…");
-                    void latest.current.onUndo(undo).then((error) =>
-                      error ? toast.error(error, { id: undoing }) : toast.success("已撤回导入", { id: undoing }),
-                    );
-                  },
-                }
-              : undefined,
+          cancel: {
+            label: "撤回",
+            onClick: () => {
+              const undoing = toast.loading("正在撤回…");
+              void latest.current.onUndo(undo).then((error) =>
+                error ? toast.error(error, { id: undoing }) : toast.success("已撤回导入", { id: undoing }),
+              );
+            },
+          },
         });
       });
     };

@@ -92,22 +92,19 @@ test("导入后墙不闪：结果不先换成整个文件夹，也不变暗", as
   expect([...new Set(seen)].sort()).toEqual(["3:lit", "4:lit"]);
 });
 
-test("同样内容的图不重复导入，选中已有的那张", async ({ page, baseURL }) => {
+test("只带图片链接的拖放由后端下载，同名时编号", async ({ page, baseURL }) => {
   await openScratch(page);
   // Served by vite from the fixture vault; the backend downloads it with curl.
   const src = `${baseURL}/vault/${encodeURIComponent("乱码名-A7f3.jpg")}?name=x`;
-  await page.locator('[data-rel-path="海报/和风-02.jpg"]').click();
   await page.evaluate((url) => {
     const data = new DataTransfer();
     data.setData("text/html", `<a href="https://example.com/page"><img src="${url}"></a>`);
     data.setData("text/uri-list", "https://example.com/page");
     window.dispatchEvent(new DragEvent("drop", { dataTransfer: data, cancelable: true }));
   }, src);
-  await expect(toast(page, "success")).toContainText("素材库里已有这张图");
-  await expect(toast(page, "success").getByRole("button", { name: "撤回" })).toHaveCount(0);
-  await expect(inspector(page)).toHaveAttribute("data-entry", "乱码名-A7f3.jpg");
-  expect(existsSync(join(vault, "乱码名-A7f3 2.jpg"))).toBe(false);
-  await expect(page.getByTestId("thumb")).toHaveCount(12);
+  await expect(toast(page, "success")).toContainText("已导入 1 项");
+  await expect(inspector(page)).toHaveAttribute("data-entry", "乱码名-A7f3 2.jpg");
+  expect(readFileSync(join(vault, ".shelf/meta/乱码名-A7f3 2.jpg.md"), "utf8")).toContain(`source: ${src}`);
 });
 
 test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的文件", async ({ page }) => {
@@ -123,7 +120,7 @@ test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的�
   await expect(inspector(page)).toHaveAttribute("data-entry", "海报/zz-最后一张.jpg");
 
   await page.getByRole("button", { name: "撤回" }).click();
-  await expect(toast(page, "success")).toContainText("已撤回导入");
+  await expect(toast(page, "success").filter({ hasText: "已撤回导入" })).toBeVisible();
   expect(existsSync(join(vault, "海报/zz-最后一张.jpg"))).toBe(false);
   expect(existsSync(join(vault, ".shelf/meta/海报/zz-最后一张.jpg.md"))).toBe(false);
   await expect(page.locator('[data-rel-path="海报/zz-最后一张.jpg"]')).toHaveCount(0);

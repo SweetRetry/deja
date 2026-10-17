@@ -252,14 +252,13 @@ export function useVault(semanticEnabled: boolean) {
   // the inspector shows what just arrived. The caller reports the outcome, so
   // failures do not also go to the error bar.
   const importDrop = useCallback(
-    async (items: ImportItem[]): Promise<{ imported: string[]; existing: string[] } | { error: string }> => {
+    async (items: ImportItem[]): Promise<{ imported: string[] } | { error: string }> => {
       if (items.length === 0) return { error: "not an image or video" };
       try {
         const res = await api.importItems(filterRef.current.folder, items);
-        const first = res.imported[0] ?? res.existing[0];
-        if (first) setSelected(first);
+        if (res.imported[0]) setSelected(res.imported[0]);
         await rescanned(res.view);
-        return { imported: res.imported, existing: res.existing };
+        return { imported: res.imported };
       } catch (problem) {
         return { error: problem instanceof Error ? problem.message : String(problem) };
       }
@@ -279,17 +278,23 @@ export function useVault(semanticEnabled: boolean) {
     [rescanned],
   );
 
-  /** Selects a file and scrolls the wall to it. A search or filter hiding it is
-   *  cleared, and the sidebar moves to its folder. */
+  /** Selects a file and scrolls the wall to it. The view stays only when it is
+   *  a plain folder holding the file; any search or filter is cleared. Decided
+   *  from the inputs, not the results, which may still be in flight. */
   const locate = useCallback((relPath: string) => {
+    const current = filterRef.current;
+    const plain =
+      queryRef.current.trim() === "" &&
+      JSON.stringify(current) === JSON.stringify({ ...emptyFilter, folder: current.folder }) &&
+      (current.folder === "" || relPath.startsWith(`${current.folder}/`));
     setSimilar(null);
     setSelected(relPath);
-    if (!entries.some((entry) => entry.relPath === relPath)) {
+    if (!plain) {
       setQuery("");
       setFilter({ ...emptyFilter, folder: relPath.split("/").slice(0, -1).join("/") });
     }
     setFocus({ relPath, nonce: Date.now() });
-  }, [entries]);
+  }, []);
 
   const retrySemantic = useCallback(async () => {
     dispatch({ type: "MODEL_WARMING" });

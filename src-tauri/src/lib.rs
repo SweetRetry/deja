@@ -381,14 +381,10 @@ fn import(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
-  let (root, files) = {
-    let guard = ENGINE.lock().expect("engine lock");
-    let engine = guard.as_ref().ok_or("no vault open")?;
-    (engine.root.clone(), engine.files.clone())
-  };
-  let outcome = import::import_into(&root, folder, &items, &files)?;
-  IMPORTED.lock().expect("imported lock").extend(outcome.imported.iter().map(|rel| root.join(rel)));
-  Ok(json!({ "imported": outcome.imported, "existing": outcome.existing, "view": refresh()? }))
+  let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
+  let imported = import::import_into(&root, folder, &items)?;
+  IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
+  Ok(json!({ "imported": imported, "view": refresh()? }))
 }
 
 /// Takes back an import. Paths it did not write are refused, so the UI cannot
