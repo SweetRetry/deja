@@ -15,6 +15,8 @@ type Props = {
   loading: boolean;
   /** Changes whenever the result set means something new; the wall returns to the top. */
   scrollKey: string;
+  /** Scroll this tile into the middle of the view once it is laid out. */
+  focus?: { relPath: string; nonce: number } | null;
   emptyTitle: string;
   emptyBody: string;
   emptyAction?: React.ReactNode;
@@ -71,6 +73,7 @@ export function Grid({
   onSelect,
   loading,
   scrollKey,
+  focus = null,
   emptyTitle,
   emptyBody,
   emptyAction,
@@ -111,6 +114,20 @@ export function Grid({
     () => layout(entries, columns, columnWidth || cell, mode === "grid", caption),
     [entries, columns, columnWidth, cell, mode, caption],
   );
+
+  // The tile may not be in the results yet (a locate can clear the search), so
+  // this waits for a layout that has it, then handles each request once.
+  const focused = useRef(0);
+  useEffect(() => {
+    const element = viewport.current;
+    if (!focus || focus.nonce === focused.current || !element) return;
+    const item = placed.find((tile) => tile.entry.relPath === focus.relPath);
+    if (!item) return;
+    focused.current = focus.nonce;
+    const paddingTop = parseFloat(getComputedStyle(element).paddingTop) || 0;
+    const top = paddingTop + item.y + item.height / 2 - element.clientHeight / 2;
+    element.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }, [focus, placed]);
 
   // First load: tiles in the wall's own shape, never a spinner.
   // Every state starts below the 48px header that floats over the wall (pt-16).

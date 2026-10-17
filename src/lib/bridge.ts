@@ -51,6 +51,7 @@ export const api = {
   indexSlice: (batch: number) => call<IndexProgress>("index_slice", { batch }),
   refresh: () => call<VaultView>("refresh"),
   importItems: (folder: string, items: ImportItem[]) => call<ImportResponse>("import", { folder, items }),
+  undoImport: (relPaths: string[]) => call<{ view: VaultView }>("undo_import", { relPaths }),
   takeDirty: () => call<{ dirty: boolean }>("take_dirty"),
   settings: () => call<AppSettings>("settings"),
   saveSettings: (settings: AppSettings) => call<AppSettings>("save_settings", { settings }),

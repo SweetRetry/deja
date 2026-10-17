@@ -5,6 +5,7 @@ import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { DropImport } from "./components/DropImport";
+import { Toaster } from "@/components/ui/sonner";
 import { OpenFolder } from "./components/OpenFolder";
 import { PaneResizer } from "./components/PaneResizer";
 import { Toolbar } from "./components/Toolbar";
@@ -24,6 +25,8 @@ function humanError(message: string): string {
   if (message.includes("no vault open")) return "尚未打开素材文件夹。";
   if (message.includes("not an image or video")) return "拖入的内容里没有图片或视频。";
   if (message.includes("download failed")) return "图片下载失败，可先存到本地再拖进来。";
+  if (message.includes("undo failed") || message.includes("was not imported here"))
+    return "撤回失败，文件可能已被移动或删除。";
   if (message.toLowerCase().includes("model") || message.includes("sidecar"))
     return "语义模型启动失败，搜索仅匹配文件名、标签与备注。";
   return "操作未完成，请重试。";
@@ -204,6 +207,7 @@ export default function App() {
           selected={state.selected}
           onSelect={state.setSelected}
           loading={state.opening}
+          focus={state.focus}
           scrollKey={JSON.stringify([
             state.query.trim(),
             state.filter,
@@ -275,9 +279,15 @@ export default function App() {
         target={vault ? (state.filter.folder.split("/").pop() || vault.root.split("/").pop() || vault.root) : null}
         onDrop={async (items) => {
           const result = await state.importDrop(items);
-          return "error" in result ? { error: humanError(result.error) } : { count: result.imported };
+          return "error" in result ? { error: humanError(result.error) } : result;
+        }}
+        onLocate={state.locate}
+        onUndo={async (relPaths) => {
+          const result = await state.undoImport(relPaths);
+          return result ? humanError(result.error) : null;
         }}
       />
+      <Toaster theme={view.theme} position="bottom-center" />
     </SidebarProvider>
   );
 }

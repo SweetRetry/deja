@@ -33,6 +33,8 @@ export function useVault(semanticEnabled: boolean) {
   const [colorCounts, setColorCounts] = useState<number[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [similar, setSimilar] = useState<SimilarRow[] | null>(null);
+  /** A tile the wall should scroll to; the nonce repeats a locate on the same file. */
+  const [focus, setFocus] = useState<{ relPath: string; nonce: number } | null>(null);
 
   const root = vault?.root ?? null;
   const semanticModeRef = useRef(semanticMode);
@@ -48,13 +50,18 @@ export function useVault(semanticEnabled: boolean) {
   // or an older answer overwrites the selection a newer one just made.
   const searchSeq = useRef(0);
 
-  const runSearch = useCallback(async (q: string, f: Filter, s: string) => {
+  // `quiet` is for searches nobody asked for (index ticks, rescans, imports):
+  // they swap results in place instead of dimming the wall while they run.
+  const runSearch = useCallback(async (q: string, f: Filter, s: string, quiet = false) => {
     const seq = ++searchSeq.current;
-    dispatch({ type: "SEARCH_START" });
+    if (!quiet) dispatch({ type: "SEARCH_START" });
+    const settle = () => {
+      if (!quiet) dispatch({ type: "SEARCH_END" });
+    };
     try {
       const res = await api.search(q, f, s, semanticModeRef.current);
       if (seq !== searchSeq.current) {
-        dispatch({ type: "SEARCH_END" });
+        settle();
         return;
       }
       setEntries(res.entries);
@@ -69,7 +76,7 @@ export function useVault(semanticEnabled: boolean) {
       setColorCounts(res.colorCounts);
       setSemantic(res.semantic);
       setTookMs(res.tookMs);
-      dispatch({ type: "SEARCH_END" });
+      settle();
     } catch (problem) {
       dispatch({
         type: "SEARCH_FAILED",
@@ -89,6 +96,21 @@ export function useVault(semanticEnabled: boolean) {
     setEntries(view.entries);
     setScores({});
   }, []);
+
+  /** The folder changed underneath an open view. Only the vault and counts move
+   *  here; the wall keeps its results until the quiet search replaces them, so
+   *  it never flashes the unfiltered list. */
+  const rescanned = useCallback(async (view: VaultView) => {
+    setVault(view);
+    dispatch({
+      type: "RESCAN",
+      indexed: view.indexed,
+      embedded: view.embedded,
+      total: view.total,
+      remaining: view.total - view.indexed,
+    });
+    await runSearch(queryRef.current, filterRef.current, sortRef.current, true);
+  }, [runSearch]);
 
   const openVault = useCallback(
     async (path: string) => {
@@ -173,7 +195,7 @@ export function useVault(semanticEnabled: boolean) {
         });
         if (step.modelError) dispatch({ type: "MODEL_FAILED", error: step.modelError });
         if (step.derived > 0 || step.embeddedNow > 0) {
-          await runSearch(queryRef.current, filterRef.current, sortRef.current);
+          await runSearch(queryRef.current, filterRef.current, sortRef.current, true);
         }
       } catch (problem) {
         if (!stopped) {
@@ -200,23 +222,14 @@ export function useVault(semanticEnabled: boolean) {
         try {
           const { dirty } = await api.takeDirty();
           if (!dirty) return;
-          const view = await api.refresh();
-          applyView(view);
-          dispatch({
-            type: "RESCAN",
-            indexed: view.indexed,
-            embedded: view.embedded,
-            total: view.total,
-            remaining: view.total - view.indexed,
-          });
-          await runSearch(queryRef.current, filterRef.current, sortRef.current);
+          await rescanned(await api.refresh());
         } catch {
           /* the folder may be mid-move; the next poll retries */
         }
       })();
     }, 2000);
     return () => clearInterval(timer);
-  }, [root, applyView, runSearch]);
+  }, [root, rescanned]);
 
   const saveMeta = useCallback(async (relPath: string, meta: EntryMeta) => {
     try {
@@ -236,31 +249,47 @@ export function useVault(semanticEnabled: boolean) {
   }, []);
 
   // Dropped files land in the folder being viewed and become the selection, so
-  // the inspector shows what just arrived without hunting for it. The caller
-  // reports the outcome, so failures do not also go to the error bar.
+  // the inspector shows what just arrived. The caller reports the outcome, so
+  // failures do not also go to the error bar.
   const importDrop = useCallback(
-    async (items: ImportItem[]): Promise<{ imported: number } | { error: string }> => {
+    async (items: ImportItem[]): Promise<{ imported: string[]; existing: string[] } | { error: string }> => {
       if (items.length === 0) return { error: "not an image or video" };
       try {
         const res = await api.importItems(filterRef.current.folder, items);
-        applyView(res.view);
-        dispatch({
-          type: "RESCAN",
-          indexed: res.view.indexed,
-          embedded: res.view.embedded,
-          total: res.view.total,
-          remaining: res.view.total - res.view.indexed,
-        });
-        setSimilar(null);
-        setSelected(res.imported[0] ?? null);
-        await runSearch(queryRef.current, filterRef.current, sortRef.current);
-        return { imported: res.imported.length };
+        const first = res.imported[0] ?? res.existing[0];
+        if (first) setSelected(first);
+        await rescanned(res.view);
+        return { imported: res.imported, existing: res.existing };
       } catch (problem) {
         return { error: problem instanceof Error ? problem.message : String(problem) };
       }
     },
-    [applyView, runSearch],
+    [rescanned],
   );
+
+  const undoImport = useCallback(
+    async (relPaths: string[]): Promise<{ error: string } | null> => {
+      try {
+        await rescanned((await api.undoImport(relPaths)).view);
+        return null;
+      } catch (problem) {
+        return { error: problem instanceof Error ? problem.message : String(problem) };
+      }
+    },
+    [rescanned],
+  );
+
+  /** Selects a file and scrolls the wall to it. A search or filter hiding it is
+   *  cleared, and the sidebar moves to its folder. */
+  const locate = useCallback((relPath: string) => {
+    setSimilar(null);
+    setSelected(relPath);
+    if (!entries.some((entry) => entry.relPath === relPath)) {
+      setQuery("");
+      setFilter({ ...emptyFilter, folder: relPath.split("/").slice(0, -1).join("/") });
+    }
+    setFocus({ relPath, nonce: Date.now() });
+  }, [entries]);
 
   const retrySemantic = useCallback(async () => {
     dispatch({ type: "MODEL_WARMING" });
@@ -346,6 +375,9 @@ export function useVault(semanticEnabled: boolean) {
     findSimilar,
     saveMeta,
     importDrop,
+    undoImport,
+    locate,
+    focus,
     retrySemantic,
     openVault,
     close,

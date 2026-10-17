@@ -105,6 +105,8 @@ pub fn phase_of(pending: usize, embedded: usize, total: usize) -> &'static str {
 
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 static DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Absolute paths this process wrote by import; undo deletes only these.
+static IMPORTED: Mutex<std::collections::BTreeSet<PathBuf>> = Mutex::new(std::collections::BTreeSet::new());
 
 /// Always absolute: thumbnail paths are handed to another process (the model
 /// sidecar) whose working directory is not ours.
@@ -254,6 +256,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "reveal" => reveal(args),
     "refresh" => refresh(),
     "import" => import(args),
+    "undo_import" => undo_import(args),
     "take_dirty" => Ok(json!({ "dirty": DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) })),
     "warm_model" => warm_model(),
     "settings" => serde_json::to_value(settings::get()).map_err(|e| e.to_string()),
@@ -378,9 +381,32 @@ fn import(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
+  let (root, files) = {
+    let guard = ENGINE.lock().expect("engine lock");
+    let engine = guard.as_ref().ok_or("no vault open")?;
+    (engine.root.clone(), engine.files.clone())
+  };
+  let outcome = import::import_into(&root, folder, &items, &files)?;
+  IMPORTED.lock().expect("imported lock").extend(outcome.imported.iter().map(|rel| root.join(rel)));
+  Ok(json!({ "imported": outcome.imported, "existing": outcome.existing, "view": refresh()? }))
+}
+
+/// Takes back an import. Paths it did not write are refused, so the UI cannot
+/// be used to delete the user's own files.
+fn undo_import(args: &Value) -> Result<Value, String> {
+  let rels: Vec<String> = serde_json::from_value(args.get("relPaths").cloned().unwrap_or(json!([])))
+    .map_err(|e| format!("relPaths are malformed: {e}"))?;
   let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
-  let imported = import::import_into(&root, folder, &items)?;
-  Ok(json!({ "imported": imported, "view": refresh()? }))
+  let mut imported = IMPORTED.lock().expect("imported lock");
+  if let Some(rel) = rels.iter().find(|rel| !imported.contains(&root.join(rel))) {
+    return Err(format!("{rel} was not imported here"));
+  }
+  import::remove(&root, &rels)?;
+  for rel in &rels {
+    imported.remove(&root.join(rel));
+  }
+  drop(imported);
+  Ok(json!({ "view": refresh()? }))
 }
 
 fn entry(args: &Value) -> Result<Value, String> {

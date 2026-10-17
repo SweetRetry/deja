@@ -79,7 +79,8 @@ export type SimilarResponse = { results: SimilarRow[] };
 /** One dropped item: a `data:` URL for bytes the page read, or the image's web address. */
 export type ImportItem = { url: string; name: string | null; source: string | null };
 
-export type ImportResponse = { imported: string[]; view: VaultView };
+/** `existing` are drops the vault already held byte for byte, as the path that holds them. */
+export type ImportResponse = { imported: string[]; existing: string[]; view: VaultView };
 
 export const emptyFilter: Filter = {
   kinds: [],

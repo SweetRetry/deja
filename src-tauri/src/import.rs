@@ -1,9 +1,9 @@
 // Files dropped onto the window, usually images dragged straight out of a
 // browser. Every item arrives as a URL: a `data:` URL for bytes the page could
 // read itself, an http(s) URL for an image only the browser had a link to.
-use crate::{meta, Meta};
+use crate::{meta, scan::RawFile, Meta};
 use base64::Engine as _;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -141,9 +141,28 @@ fn unique(dir: &Path, name: &str) -> String {
     .expect("some number is free")
 }
 
-/// Writes each item into `root/folder` and returns the new relative paths.
-/// One bad item does not stop the rest; it fails the call only if nothing landed.
-pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<String>, String> {
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Outcome {
+  /// Files this call wrote.
+  pub imported: Vec<String>,
+  /// Items whose bytes the vault already had, as the path that holds them.
+  pub existing: Vec<String>,
+}
+
+/// A file with these exact bytes, if the vault has one. Size narrows the field
+/// first, so only same-size files are read; equal bytes, not a hash, decides.
+fn same_bytes<'a>(files: &'a [RawFile], bytes: &[u8]) -> Option<&'a RawFile> {
+  files
+    .iter()
+    .filter(|file| file.size_bytes == bytes.len() as u64)
+    .find(|file| std::fs::read(&file.abs).map(|other| other == bytes).unwrap_or(false))
+}
+
+/// Writes each item into `root/folder`. `files` is the vault as last scanned;
+/// a drop whose bytes are already there is not copied again. One bad item does
+/// not stop the rest; it fails the call only if nothing landed or matched.
+pub fn import_into(root: &Path, folder: &str, items: &[Item], files: &[RawFile]) -> Result<Outcome, String> {
   if folder.split('/').any(|part| part == ".." || part.starts_with('.')) {
     return Err(format!("{folder} is not in the vault"));
   }
@@ -151,31 +170,64 @@ pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<Stri
   if !dir.is_dir() {
     return Err(format!("{folder} is not in the vault"));
   }
-  let mut imported = Vec::new();
+  // Grows with each write, so one drop carrying the same image twice keeps one.
+  let mut known: Vec<RawFile> = files.to_vec();
+  let mut outcome = Outcome::default();
   let mut last_error = None;
   for item in items {
-    let result = fetch(&item.url).and_then(|bytes| {
-      let ext = sniff(&bytes).ok_or("not an image or video")?;
-      let name = unique(&dir, &file_name(item, ext));
-      std::fs::write(dir.join(&name), &bytes).map_err(|e| format!("write failed: {e}"))?;
-      Ok(name)
-    });
-    match result {
-      Ok(name) => {
-        let rel = if folder.is_empty() { name } else { format!("{folder}/{name}") };
-        let source = item.source.clone().filter(|s| s.starts_with("http"));
-        if source.is_some() {
-          meta::write(root, &rel, &Meta { source, ..Meta::default() })?;
-        }
-        imported.push(rel);
+    let bytes = match fetch(&item.url) {
+      Ok(bytes) => bytes,
+      Err(error) => {
+        last_error = Some(error);
+        continue;
       }
-      Err(error) => last_error = Some(error),
+    };
+    let Some(ext) = sniff(&bytes) else {
+      last_error = Some("not an image or video".to_string());
+      continue;
+    };
+    if let Some(file) = same_bytes(&known, &bytes) {
+      if !outcome.existing.contains(&file.rel_path) && !outcome.imported.contains(&file.rel_path) {
+        outcome.existing.push(file.rel_path.clone());
+      }
+      continue;
     }
+    let name = unique(&dir, &file_name(item, ext));
+    let abs = dir.join(&name);
+    if let Err(error) = std::fs::write(&abs, &bytes) {
+      last_error = Some(format!("write failed: {error}"));
+      continue;
+    }
+    let rel = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
+    let source = item.source.clone().filter(|s| s.starts_with("http"));
+    if source.is_some() {
+      meta::write(root, &rel, &Meta { source, ..Meta::default() })?;
+    }
+    known.push(RawFile {
+      rel_path: rel.clone(),
+      name,
+      ext: ext.to_string(),
+      kind: String::new(),
+      size_bytes: bytes.len() as u64,
+      modified: 0,
+      abs,
+    });
+    outcome.imported.push(rel);
   }
-  match (imported.is_empty(), last_error) {
+  match (outcome.imported.is_empty() && outcome.existing.is_empty(), last_error) {
     (true, Some(error)) => Err(error),
-    _ => Ok(imported),
+    _ => Ok(outcome),
   }
+}
+
+/// Removes files an import wrote, with their sidecars. The caller passes only
+/// paths it recorded from `import_into`, so nothing the user put there is touched.
+pub fn remove(root: &Path, rels: &[String]) -> Result<(), String> {
+  for rel in rels {
+    std::fs::remove_file(root.join(rel)).map_err(|e| format!("undo failed: {e}"))?;
+    meta::write(root, rel, &Meta::default())?;
+  }
+  Ok(())
 }
 
 #[cfg(test)]
@@ -213,13 +265,28 @@ mod tests {
     let mut drop = item(&url, Some("图.png"));
     drop.source = Some("https://example.com/pic".into());
 
-    assert_eq!(import_into(&dir, "参考", &[drop]).unwrap(), vec!["参考/图.png"]);
-    assert_eq!(import_into(&dir, "参考", &[item(&url, Some("图.png"))]).unwrap(), vec!["参考/图 2.png"]);
+    let first = import_into(&dir, "参考", &[drop, item(&url, Some("again.png"))], &[]).unwrap();
+    assert_eq!(first, Outcome { imported: vec!["参考/图.png".into()], existing: vec![] }, "same bytes twice in one drop");
     assert_eq!(meta::read(&dir, "参考/图.png").source.as_deref(), Some("https://example.com/pic"));
-    assert!(import_into(&dir, "../x", &[item(&url, None)]).is_err());
+
+    let other = base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nother");
+    let second = import_into(
+      &dir,
+      "参考",
+      &[item(&url, None), item(&format!("data:image/png;base64,{other}"), Some("图.png"))],
+      &crate::scan::walk(&dir, &[]),
+    )
+    .unwrap();
+    assert_eq!(second, Outcome { imported: vec!["参考/图 2.png".into()], existing: vec!["参考/图.png".into()] });
+    assert!(import_into(&dir, "../x", &[item(&url, None)], &[]).is_err());
+
+    remove(&dir, &second.imported).unwrap();
+    assert!(!dir.join("参考/图 2.png").exists());
+    remove(&dir, &["参考/图.png".to_string()]).unwrap();
+    assert!(!meta::meta_path(&dir, "参考/图.png").exists(), "the sidecar goes with the file");
 
     let html = base64::engine::general_purpose::STANDARD.encode(b"<html>");
-    let error = import_into(&dir, "", &[item(&format!("data:text/html;base64,{html}"), None)]).unwrap_err();
+    let error = import_into(&dir, "", &[item(&format!("data:text/html;base64,{html}"), None)], &[]).unwrap_err();
     assert_eq!(error, "not an image or video");
     let _ = std::fs::remove_dir_all(&dir);
   }
