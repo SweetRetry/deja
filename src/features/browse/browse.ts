@@ -128,6 +128,24 @@ export function reduceBrowse(browse: BrowseState, event: SessionEvent): BrowseSt
         reveal: event.reveal ? { relPath: event.relPath, nonce: (browse.reveal?.nonce ?? 0) + 1, align: "nearest" } : browse.reveal,
       };
 
+    case "ENTRY_REMOVED": {
+      const gone = (paths: string[]) => paths.filter((path) => path !== event.relPath);
+      const shown = browse.similar?.paths ?? browse.results.paths;
+      const left = gone(shown);
+      const at = shown.indexOf(event.relPath);
+      // The tile after the deleted one takes the selection, else the one before;
+      // deleting is usually a sweep, and the pointer should not have to travel.
+      const selected = browse.selected === event.relPath ? (left[at] ?? left[at - 1] ?? null) : browse.selected;
+      return {
+        ...browse,
+        selected,
+        // A viewer can only show a file that still exists.
+        viewing: browse.viewing && browse.selected !== event.relPath,
+        results: { ...browse.results, paths: gone(browse.results.paths) },
+        similar: browse.similar?.paths ? { ...browse.similar, paths: gone(browse.similar.paths) } : browse.similar,
+      };
+    }
+
     case "LOCATE": {
       // The view stays only when it is a plain folder holding the file; any
       // search or filter hiding it is cleared. Decided from the inputs, not the

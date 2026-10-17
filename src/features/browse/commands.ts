@@ -30,5 +30,20 @@ export async function findSimilar(source: string) {
 }
 
 export const clearSimilar = () => dispatch({ type: "SIMILAR_CLEARED" });
+
+/** Moves a file to the system Trash. The Trash is the undo, so there is no
+ *  confirmation: the tile leaves the wall and the toast says where it went. */
+export async function deleteEntry(relPath: string) {
+  const entry = session().vault.library?.byPath[relPath];
+  if (!entry) return;
+  try {
+    const { view } = await api.trash(relPath);
+    dispatch({ type: "ENTRY_REMOVED", relPath });
+    dispatch({ type: "RESCANNED", view });
+    toast.success(`已将「${entry.name}」移到废纸篓`, { description: "需要时可在访达的废纸篓里找回。" });
+  } catch (problem) {
+    toast.error(humanError(problem));
+  }
+}
 export const openViewer = () => dispatch({ type: "VIEWER", open: true });
 export const closeViewer = () => dispatch({ type: "VIEWER", open: false });

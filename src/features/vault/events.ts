@@ -37,6 +37,8 @@ export type SessionEvent =
   | { type: "RESULTS"; request: number; response: SearchResponse }
   | { type: "SEARCH_FAILED"; request: number }
   | { type: "SELECT"; relPath: string; reveal?: boolean }
+  /** The file went to the Trash: it leaves the wall, selection moving on. */
+  | { type: "ENTRY_REMOVED"; relPath: string }
   | { type: "LOCATE"; relPath: string }
   | { type: "SIMILAR_REQUESTED"; source: string }
   | { type: "SIMILAR_RESULTS"; source: string; paths: string[] }

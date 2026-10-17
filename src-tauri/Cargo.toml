@@ -27,3 +27,4 @@ notify = "7"
 sqlite-vec = "0.1.9"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 tauri-plugin-dialog = "2.0.0-rc.8"
+trash = "5"

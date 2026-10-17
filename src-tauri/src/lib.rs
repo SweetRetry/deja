@@ -266,6 +266,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "similar" => search::similar(args),
     "entry" => entry(args),
     "reveal" => reveal(args),
+    "trash_entry" => trash_entry(args),
     "refresh" => refresh(),
     "import" => import(args),
     "undo_import" => undo_import(args),
@@ -466,6 +467,29 @@ fn reveal(args: &Value) -> Result<Value, String> {
     .status()
     .map_err(|e| format!("reveal failed: {e}"))?;
   Ok(json!({ "revealed": true }))
+}
+
+/// Moves one file the vault lists to the system Trash and rescans, so the reply
+/// already leaves it out.
+fn trash_entry(args: &Value) -> Result<Value, String> {
+  let rel = args
+    .get("relPath")
+    .and_then(Value::as_str)
+    .ok_or("relPath is required")?
+    .to_string();
+  let root = {
+    let guard = ENGINE.lock().expect("engine lock");
+    let engine = guard.as_ref().ok_or("no vault open")?;
+    // Same guard as reveal: only what the vault already lists can be deleted.
+    if !engine.files.iter().any(|file| file.rel_path == rel) {
+      return Err(format!("{rel} is not in the vault"));
+    }
+    engine.root.clone()
+  };
+  let into = std::env::var_os("DEJA_TRASH_DIR").map(PathBuf::from);
+  files::trash(&root.join(&rel), into.as_deref())?;
+  // The sidecar stays behind, so putting the file back restores its tags.
+  Ok(json!({ "trashed": rel, "view": refresh()? }))
 }
 
 fn save_meta(args: &Value) -> Result<Value, String> {

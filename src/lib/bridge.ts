@@ -60,6 +60,7 @@ export const api = {
   similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
   entry: (relPath: string) => call<Entry>("entry", { relPath }),
   reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),
+  trash: (relPath: string) => call<{ trashed: string; view: VaultView }>("trash_entry", { relPath }),
   selfcheck: () =>
     call<{ enabled: boolean; vault: string | null; out: string | null }>("selfcheck_requested"),
   selfcheckReport: (report: unknown) => call<{ written: string }>("selfcheck_report", { report }),

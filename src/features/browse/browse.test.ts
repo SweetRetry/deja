@@ -138,6 +138,36 @@ test("the viewer only opens on a selection", () => {
   assert.equal(reduce(open, { type: "VIEWER", open: true }).browse.viewing, true);
 });
 
+test("a deleted file leaves the wall and the next tile takes the selection", () => {
+  const selected = reduce(open, { type: "SELECT", relPath: "b.jpg" });
+  const removed = reduce(selected, { type: "ENTRY_REMOVED", relPath: "b.jpg" });
+  assert.deepEqual(removed.browse.results.paths, ["a.jpg", "p/c.jpg"]);
+  assert.equal(removed.browse.selected, "p/c.jpg");
+});
+
+test("deleting the last tile selects the one before it", () => {
+  const selected = reduce(open, { type: "SELECT", relPath: "p/c.jpg" });
+  const removed = reduce(selected, { type: "ENTRY_REMOVED", relPath: "p/c.jpg" });
+  assert.equal(removed.browse.selected, "b.jpg");
+});
+
+test("deleting a file the similar view lists takes it out of that view too", () => {
+  const similar = run(
+    [{ type: "SIMILAR_REQUESTED", source: "a.jpg" }, { type: "SIMILAR_RESULTS", source: "a.jpg", paths: ["b.jpg", "p/c.jpg"] }],
+    open,
+  );
+  const removed = reduce(reduce(similar, { type: "SELECT", relPath: "b.jpg" }), { type: "ENTRY_REMOVED", relPath: "b.jpg" });
+  assert.deepEqual(removed.browse.similar?.paths, ["p/c.jpg"]);
+  assert.deepEqual(removed.browse.results.paths, ["a.jpg", "p/c.jpg"], "the search behind it forgets the file too");
+  assert.equal(removed.browse.selected, "p/c.jpg");
+});
+
+test("the viewer closes on the file it was showing", () => {
+  const viewing = reduce(open, { type: "VIEWER", open: true });
+  assert.equal(reduce(viewing, { type: "ENTRY_REMOVED", relPath: "b.jpg" }).browse.viewing, true, "another file is open");
+  assert.equal(reduce(viewing, { type: "ENTRY_REMOVED", relPath: "a.jpg" }).browse.viewing, false);
+});
+
 test("an answer from the previous folder cannot land in the next one", () => {
   const started = reduce(open, { type: "SEARCH_STARTED", quiet: false });
   const request = started.browse.request;

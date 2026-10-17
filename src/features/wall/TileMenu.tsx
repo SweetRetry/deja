@@ -1,9 +1,10 @@
 import { session } from "@/app/store";
-import { findSimilar, openViewer } from "@/features/browse/commands";
+import { deleteEntry, findSimilar, openViewer } from "@/features/browse/commands";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
@@ -44,6 +45,16 @@ export function TileMenu({ className, children }: { className?: string; children
           }}
         >
           在访达中显示
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          variant="destructive"
+          onClick={() => {
+            const relPath = selectedPath();
+            if (relPath) void deleteEntry(relPath);
+          }}
+        >
+          移到废纸篓
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

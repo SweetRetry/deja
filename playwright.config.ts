@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { SCRATCH_TRASH } from "./e2e/scratch-trash";
 
 const PORT = 5273;
 
@@ -21,6 +22,7 @@ export default defineConfig({
       // The real Rust backend: same dispatch the Tauri command calls.
       command: "npm run e2e:api",
       url: "http://127.0.0.1:5177/api/health",
+      env: { DEJA_TRASH_DIR: SCRATCH_TRASH },
       reuseExistingServer: true,
       timeout: 60_000,
     },
