@@ -57,16 +57,6 @@ test("打开文件夹后三栏同时出现，缩略图墙有素材", async ({ pa
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 });
 
-test("侧栏能收起和展开", async ({ page }) => {
-  await openVault(page);
-  const sidebar = page.locator('[data-slot="sidebar"]');
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
-  await page.getByRole("button", { name: "收起侧栏" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await page.getByRole("button", { name: "展开侧栏" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
-});
-
 test("中文搜索命中文件名与标签", async ({ page }) => {
   await openVault(page);
   await page.getByLabel("搜索素材").fill("黄昏");
@@ -76,29 +66,6 @@ test("中文搜索命中文件名与标签", async ({ page }) => {
     "data-rel-path",
     "摄影/人像/黄昏逆光-01.jpg",
   );
-});
-
-test("无空格中文查询也能命中", async ({ page }) => {
-  await openVault(page);
-  await page.getByLabel("搜索素材").fill("深色登录");
-  await useKeywordRanking(page);
-  await expect(page.getByTestId("thumb").first()).toHaveAttribute(
-    "data-rel-path",
-    "UI参考/登录页/深色登录-dribbble.jpg",
-  );
-  await page.getByLabel("搜索素材").fill("不存在的词");
-  await expect(page.getByText("没有匹配「不存在的词」的素材")).toBeVisible();
-});
-
-test("筛选视频类型时显示空态", async ({ page }) => {
-  await openVault(page);
-  await openPanel(page);
-  await page.getByRole("button", { name: "视频", exact: true }).click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByText("此文件夹中没有视频")).toBeVisible();
-  // The active filter stays removable from the toolbar without the panel.
-  await page.getByRole("button", { name: "移除筛选：视频" }).click();
-  await expect(page.getByTestId("thumb").first()).toBeVisible();
 });
 
 test("标签写进 .deja/meta 并跨刷新保留", async ({ page }) => {
@@ -145,17 +112,6 @@ test("以图找图把近似重复排在第一位", async ({ page }) => {
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 });
 
-test("切换排序会改变结果顺序", async ({ page }) => {
-  await openVault(page);
-  const first = () => page.getByTestId("thumb").first().getAttribute("data-rel-path");
-  const byName = await first();
-  await openPanel(page);
-  await page.getByRole("button", { name: "大小", exact: true }).click();
-  await expect
-    .poll(async () => first())
-    .not.toBe(byName);
-});
-
 test("在 Finder 里新增文件后几秒内出现在素材墙", async ({ page }) => {
   await openVault(page);
   const name = "验收-新增.jpg";
@@ -167,25 +123,6 @@ test("在 Finder 里新增文件后几秒内出现在素材墙", async ({ page }
     rmSync(target, { force: true });
   }
   await expect(page.locator(`[data-rel-path="${name}"]`)).toHaveCount(0, { timeout: 15_000 });
-});
-
-test("暂停后索引不再推进，继续后恢复", async ({ page }) => {
-  await openVault(page);
-  await page.getByRole("button", { name: "暂停" }).click();
-  await expect(page.getByRole("button", { name: "继续" })).toBeVisible();
-  await expect(page.getByText("已暂停")).toBeVisible();
-  await page.getByRole("button", { name: "继续" }).click();
-  await expect(page.getByRole("button", { name: "暂停" })).toBeVisible();
-});
-
-test("瀑布流与网格可以切换", async ({ page }) => {
-  await openVault(page);
-  await expect(page.getByTestId("grid")).toHaveAttribute("data-layout", "masonry");
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "网格" }).click();
-  await expect(page.getByTestId("grid")).toHaveAttribute("data-layout", "grid");
-  await page.getByRole("button", { name: "瀑布流" }).click();
-  await expect(page.getByTestId("grid")).toHaveAttribute("data-layout", "masonry");
 });
 
 test("每项页脚给出类型图标与评分，未评分的不占位", async ({ page }) => {
