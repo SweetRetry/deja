@@ -1,7 +1,10 @@
 // Builds the demo vault from real photographs and writes the contract file that
 // both the Rust scanner test and the e2e run read.
 //
-//   node scripts/make-fixtures.mjs
+//   SHELF_FIXTURES_SOURCE=/path/to/12-photos node scripts/make-fixtures.mjs
+//
+// The photos are not in the repo: point SHELF_FIXTURES_SOURCE at a folder
+// holding them as NN-*.jpg (01-*.jpg through 11-*.jpg).
 import {
   copyFileSync,
   mkdirSync,
@@ -13,7 +16,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-const SOURCE = "/Users/zhangzimin/Documents/aquavo/olio/assets/pinterest-home-50";
+const SOURCE = process.env.SHELF_FIXTURES_SOURCE;
+if (!SOURCE) {
+  console.error("set SHELF_FIXTURES_SOURCE to the folder holding 01-*.jpg through 11-*.jpg");
+  process.exit(1);
+}
 const ROOT = "public/vault";
 
 const meta = {
@@ -140,7 +147,7 @@ const folders = [
 
 writeFileSync(
   "fixtures/expected-vault.json",
-  JSON.stringify({ vault: ROOT, source: SOURCE, folders, entries }, null, 2) + "\n",
+  JSON.stringify({ vault: ROOT, folders, entries }, null, 2) + "\n",
 );
 
 const bytes = entries.reduce((total, entry) => total + entry.sizeBytes, 0);
