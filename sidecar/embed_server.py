@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import select
 import signal
 import sys
 import threading
@@ -249,14 +250,25 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
 
-    if args.exit_with_stdin:
+    parent_watch: threading.Thread | None = None
+    if args.exit_with_stdin and sys.stdin is not None:
+        # Read the raw fd, never sys.stdin.buffer. A thread parked in
+        # BufferedReader.read holds that buffer's lock, and interpreter shutdown
+        # then abort()s the process inside _enter_buffered_busy: macOS wrote a
+        # crash report for every idle exit and every app quit. os.read on the fd
+        # holds no lock, and the 0.5s select lets the thread leave once `stop`
+        # is set, so nothing is parked in io when the interpreter finalizes.
+        stdin_fd = sys.stdin.fileno()
 
         def watch_parent() -> None:
-            sys.stdin.buffer.read()
-            print("parent closed stdin, exiting", file=sys.stderr, flush=True)
-            stop.set()
+            while not stop.is_set():
+                readable, _, _ = select.select([stdin_fd], [], [], 0.5)
+                if readable and not os.read(stdin_fd, 4096):
+                    print("parent closed stdin, exiting", file=sys.stderr, flush=True)
+                    stop.set()
 
-        threading.Thread(target=watch_parent, name="parent", daemon=True).start()
+        parent_watch = threading.Thread(target=watch_parent, name="parent", daemon=True)
+        parent_watch.start()
 
     serving = threading.Thread(target=server.serve_forever, name="http", daemon=True)
     serving.start()
@@ -270,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
     server.shutdown()
     serving.join(timeout=5)
     server.server_close()
+    if parent_watch is not None:
+        parent_watch.join(timeout=5)
     return 0
 
 

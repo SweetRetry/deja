@@ -30,7 +30,7 @@ from pathlib import Path
 
 SERVER = Path(__file__).resolve().with_name("embed_server.py")
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_IMAGE = REPO_ROOT / "public/vault/摄影/风景/海边-dusk.png"
+DEFAULT_IMAGE = REPO_ROOT / "public/vault/摄影/风景/海边-dusk.jpg"
 SAME_TOPIC_MIN_MARGIN = 0.1
 
 # (same-topic pair, unrelated pair); the first cosine must clearly win.
@@ -84,7 +84,7 @@ def norm(vector: list[float]) -> float:
 class ServerProcess:
     def __init__(self, port: int, dim: int) -> None:
         self._stdout: queue.Queue[str] = queue.Queue()
-        self._stderr: list[str] = []
+        self.stderr_lines: list[str] = []
         self.started = time.monotonic()
         self.process = subprocess.Popen(
             [
@@ -97,7 +97,12 @@ class ServerProcess:
                 "--offline",
                 "--idle-timeout",
                 "0",
+                # The app's own lifecycle: it holds stdin open, so the model dies
+                # with it. Passing these flags is what exercises the stdin
+                # watcher whose shutdown used to abort the process.
+                "--exit-with-stdin",
             ],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -112,7 +117,7 @@ class ServerProcess:
 
     def _read_stderr(self) -> None:
         for line in self.process.stderr:
-            self._stderr.append(line.rstrip("\n"))
+            self.stderr_lines.append(line.rstrip("\n"))
 
     def wait_ready(self, timeout: float = 300.0) -> float:
         """Return seconds from spawn to the server's `ready` line."""
@@ -130,16 +135,22 @@ class ServerProcess:
                 return time.monotonic() - self.started
 
     def stderr_tail(self, lines: int = 10) -> str:
-        return "\n".join(self._stderr[-lines:]) or "(no stderr)"
+        return "\n".join(self.stderr_lines[-lines:]) or "(no stderr)"
 
     def stop(self) -> None:
         if self.process.poll() is None:
-            self.process.terminate()
+            # Close the pipe the way the app does on quit, then fall back to a
+            # signal only if the sidecar ignores it.
+            self.process.stdin.close()
             try:
                 self.process.wait(timeout=20)
             except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=10)
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=10)
         self.peak_rss_mb = peak_child_rss_mb()
 
 
@@ -229,9 +240,12 @@ def main(argv: list[str] | None = None) -> int:
                 failures.append(f"cos({same_pair[0]}, {same_pair[1]}) is not clearly above {unrelated_pair}")
     finally:
         server.stop()
-        print(f"server stopped (peak RSS {server.peak_rss_mb:.0f} MB)")
-        if server.process.returncode not in (0, -15):
-            failures.append(f"server exited with {server.process.returncode}")
+        print(f"server stopped (peak RSS {server.peak_rss_mb:.0f} MB, exit {server.process.returncode})")
+        if server.process.returncode != 0:
+            failures.append(f"server exited with {server.process.returncode}, expected 0")
+        if any("Fatal Python error" in line for line in server.stderr_lines):
+            failures.append("server aborted at interpreter shutdown:")
+            failures.extend(f"  {line}" for line in server.stderr_lines[-8:])
 
     if failures:
         print("\nFAILED:")

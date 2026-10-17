@@ -47,7 +47,12 @@ ready
 ```
 
 Progress bars, warnings and per-request logs go to stderr. SIGTERM and SIGINT
-shut the server down and exit 0; the process exit frees the model.
+shut the server down and exit 0; the process exit frees the model. Every exit
+path (stdin EOF, idle timeout, SIGTERM, SIGINT) returns 0 and never aborts: the
+parent pipe is watched with `select` plus `os.read` on the raw fd, so the
+watcher thread holds no `_io` buffer lock while it waits. Reading
+`sys.stdin.buffer` instead made interpreter shutdown die in
+`_enter_buffered_busy` and macOS logged a Python crash on every quit.
 
 ## HTTP contract
 
@@ -140,5 +145,7 @@ cd sidecar
 (reporting vector length, L2 norm, non-zero, and cosines), measures warm ms per
 text and per image item, asserts two text orderings
 (`黄昏的海边`→`日落时的海岸` beats `黄昏的海边`→`蓝色渐变按钮`, and
-`深色登录页`→`暗色主题的登录界面` beats `深色登录页`→`黄色沙滩`), then kills
-the server and prints its peak RSS.
+`深色登录页`→`暗色主题的登录界面` beats `深色登录页`→`黄色沙滩`), then ends the
+server the way the app does (closes its stdin) and prints its peak RSS. It fails if
+the exit code is not 0 or stderr carries a `Fatal Python error`, so a regression
+in the shutdown path shows up as a failed run instead of a crash report.
