@@ -14,6 +14,11 @@ export function initialSession(sort?: Sort, ranking?: Ranking): Session {
 export function reduce(session: Session, event: SessionEvent): Session {
   // An answer to a superseded search is stale for every slice, not only browse.
   if (event.type === "RESULTS" && event.request !== session.browse.request) return session;
+  // So is a rescan of a folder that is no longer open: one in flight when the
+  // user switched folders must not paint the old files under the new name.
+  if ((event.type === "RESCANNED" || event.type === "SCOPED") && event.view.root !== session.vault.library?.root) {
+    return session;
+  }
   const vault = reduceVault(session.vault, event);
   const browse = reduceBrowse(session.browse, event);
   return vault === session.vault && browse === session.browse ? session : { vault, browse };

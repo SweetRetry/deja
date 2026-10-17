@@ -6,11 +6,11 @@ Shelf，文件夹即素材库的桌面原型。运行环境 macOS arm64，10 核
 
 | 项目 | 结果 | 命令 |
 | --- | --- | --- |
-| Rust 测试 | 18 单元（含 3 个 sqlite-vec）+ 4 集成（真扫描、真落盘缩略图、契约文件比对） | `npm run test:rust` |
-| 状态机单测 | 13 通过 | `node --test src/lib/vault-machine.test.ts` |
-| Playwright e2e | 13 通过，冷启动 35.6 s | `npm run e2e` |
+| Rust 测试 | 36 单元（含索引范围的归一化与成员判断）+ 5 集成（真扫描、真落盘缩略图、契约文件比对、索引范围） | `npm run test:rust` |
+| 前端单测 | 70 通过：会话状态机（含 scoping 阶段、过期答复与过期重扫）、墙布局与按键、索引范围树、文件夹树、索引状态 | `npm run test:unit` |
+| Playwright e2e | 33 条：30 通过，2 条设计截图默认跳过，`viewer.spec.ts` 的胶片条用例 1 条失败（预览不再显示「1 / 12」计数，待该功能的作者确认）。需 `--workers=1`，因为 `video.spec.ts` 运行时向共享的 `public/vault` 写文件 | `npm run e2e -- --workers=1` |
 | 桌面端自检 | 7 步全过，真窗口真 IPC | 见下文 |
-| 前端构建 | 通过，dist 249.72 kB JS / 26.46 kB CSS | `npm run build` |
+| 前端构建 | 通过，dist 749.88 kB JS（gzip 240.89 kB）/ 52.10 kB CSS | `npm run build` |
 | 桌面打包 | `Shelf.app` 36.88 MiB | `npx tauri build --debug` |
 | 启动冒烟 | 进程存活 9 s 后手动结束 | `open src-tauri/target/debug/bundle/macos/Shelf.app` |
 | 三栏截图 | `verification/three-columns.png` | `npx playwright test e2e/screenshot.spec.ts` |
@@ -59,8 +59,10 @@ rating: 5
 
 ```bash
 npm run fixtures      # 生成 public/vault 与 fixtures/expected-vault.json
-npm run test:rust     # 15 个 Rust 测试
-npm run e2e           # 编译 e2e server 后跑 13 个 Playwright 用例
+npm run test:rust     # 41 个 Rust 测试
+npm run test:unit     # 70 个前端纯逻辑测试（Node 24 直接剥类型运行）
+npm run e2e -- --workers=1   # 编译 e2e server 后跑 Playwright 用例
+REVIEW_DIR=<dir> npx playwright test e2e/review.spec.ts   # 深浅两套设计截图
 ```
 
 `npm run e2e` 会拉起两个进程：`shelf-e2e`（同一个 Rust dispatch，走 HTTP）和 Vite。Playwright 打的是真后端，不是前端假数据。
@@ -80,6 +82,8 @@ npm run e2e           # 编译 e2e server 后跑 13 个 Playwright 用例
 11. 暂停与继续索引
 12. 模型就绪后搜索从关键词排序升级为语义排序
 13. 三栏截图留档
+14. 首次打开文件夹先选索引范围：去掉「人像」后只索引 9 张，`.shelf/scope.json` 记下 `摄影/人像`；之后从文件夹菜单改回，12 张回到墙上
+15. 首次打开时取消，回到未打开状态，不写索引范围
 
 ## 组件来源
 

@@ -144,3 +144,9 @@ test("an answer from the previous folder cannot land in the next one", () => {
   const reopened = run([{ type: "CLOSE" }, { type: "OPEN", path: "/v" }], started);
   assert.equal(reduce(reopened, { type: "RESULTS", request, response: response(["x.jpg"]) }), reopened);
 });
+
+test("a rescan of the previous folder cannot land in the next one", () => {
+  const other = { root: "/elsewhere", folders: [], scope, entries: [entry("z.jpg")], indexed: 1, embedded: 1, total: 1, model: { ready: false } };
+  assert.equal(reduce(open, { type: "RESCANNED", view: other, select: "z.jpg" }), open);
+  assert.equal(reduce(open, { type: "SCOPED", view: other }), open);
+});
