@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Retry
-description: Zimin's design language on Tailwind CSS v4 and shadcn/ui, for the site, notes, slides and tools.
+description: A design language on Tailwind CSS v4 and shadcn/ui, for the site, notes, slides and tools.
 omitted:
   - section: colors
     reason: In globals.css as oklch (:root light, .dark dark, the default).
@@ -19,7 +19,7 @@ omitted:
 
 # Retry
 
-Retry is Zimin's design language for the site, notes, slides and small tools: quiet surfaces, careful type, and one color that only shows up when it means something. It grows on Tailwind CSS v4 and shadcn/ui: their scales unchanged, Retry's values in `globals.css`, and a short list of shadcn deltas.
+Retry is a design language for the site, notes, slides and small tools: quiet surfaces, careful type, and one color that only shows up when it means something. It grows on Tailwind CSS v4 and shadcn/ui: their scales unchanged, Retry's values in `globals.css`, and a short list of shadcn deltas.
 
 ## Overview
 
