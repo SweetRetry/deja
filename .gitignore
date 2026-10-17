@@ -1,14 +1,32 @@
-node_modules
-dist
-src-tauri/target
-test-results
-playwright-report
-.DS_Store
-public/vault
-.e2e-data
+# dependencies. pnpm-lock.yaml is the lockfile; npm and yarn lockfiles are not used.
+node_modules/
+package-lock.json
+yarn.lock
 
-sidecar/eval/.cache/
-
-# scratch from a debugging session
-.probe
+# build output
+dist/
+src-tauri/target/
 *.tsbuildinfo
+
+# test output
+test-results/
+playwright-report/
+blob-report/
+.e2e-data/
+verification/
+
+# fixture vault written by `pnpm fixtures`
+public/vault/
+
+# python sidecar: env, bytecode, eval caches
+sidecar/.venv/
+__pycache__/
+*.pyc
+*.log
+.cache/
+
+# local scratch
+.DS_Store
+.probe
+.env
+.env.*

@@ -13,7 +13,7 @@ Shelf，文件夹即素材库的桌面原型。运行环境 macOS arm64，10 核
 | 前端构建 | 通过，dist 749.88 kB JS（gzip 240.89 kB）/ 52.10 kB CSS | `npm run build` |
 | 桌面打包 | `Shelf.app` 36.88 MiB | `npx tauri build --debug` |
 | 启动冒烟 | 进程存活 9 s 后手动结束 | `open src-tauri/target/debug/bundle/macos/Shelf.app` |
-| 三栏截图 | `verification/three-columns.png` | `npx playwright test e2e/screenshot.spec.ts` |
+| 三栏截图 | 生成到 `verification/three-columns.jpg`，不入库 | `npx playwright test e2e/screenshot.spec.ts` |
 
 模型侧由 `sidecar/` 独立进程负责，实测来自该子任务的报告：加载 2.9 到 3.1 s，文本约 17 ms 一条，图片约 253 ms 一条，峰值 1.19 GB，空闲 766 MB，空闲后自动退出。
 
