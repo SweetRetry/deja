@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Entry } from "../../lib/types.ts";
-import { layout, neighbor } from "./layout.ts";
+import { layout, neighbor, step } from "./layout.ts";
 
 function entry(relPath: string, width: number | null = 100, height: number | null = 100): Entry {
   return {
@@ -95,4 +95,15 @@ test("the grid moves by rows, and stops where the last row runs out", () => {
   assert.equal(neighbor(grid.placed, "e", "up"), "b");
   assert.equal(neighbor(grid.placed, "c", "down"), null);
   assert.equal(neighbor(grid.placed, "missing", "down"), null);
+});
+
+test("keys step from the selection, Home and End jump, other keys do nothing", () => {
+  assert.equal(step(masonry.placed, "a", "ArrowRight"), "b");
+  assert.equal(step(masonry.placed, "a", "ArrowLeft"), null);
+  assert.equal(step(masonry.placed, "c", "Home"), "a");
+  assert.equal(step(masonry.placed, "a", "End"), "g");
+  assert.equal(step(masonry.placed, "gone", "ArrowDown"), "a", "a selection off the wall starts at the first tile");
+  assert.equal(step(masonry.placed, null, "ArrowUp"), "a");
+  assert.equal(step(masonry.placed, "a", "x"), undefined);
+  assert.equal(step([], null, "End"), null);
 });

@@ -7,7 +7,6 @@ import { patchFilter } from "./commands";
  *  current one. Ancestors navigate up; the last crumb is the current view. */
 export function Breadcrumb() {
   const folder = useSession((s) => s.browse.filter.folder);
-  const count = useSession((s) => s.browse.results.paths.length);
   const parts = folder ? folder.split("/") : [];
   const crumbs = [
     { rel: "", name: "全部素材" },
@@ -15,7 +14,7 @@ export function Breadcrumb() {
   ];
 
   return (
-    <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2">
+    <div data-tauri-drag-region className="flex min-w-24 flex-1 items-center gap-2">
       <nav data-tauri-drag-region aria-label="当前位置" className="min-w-0 shrink">
         <ol data-tauri-drag-region className="flex min-w-0 items-center gap-1 text-sm">
           {crumbs.map((crumb, i) => {
@@ -41,9 +40,6 @@ export function Breadcrumb() {
           })}
         </ol>
       </nav>
-      <span data-tauri-drag-region className="shrink-0 text-xs text-subtle-foreground tabular-nums">
-        {count} 项
-      </span>
     </div>
   );
 }

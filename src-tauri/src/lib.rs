@@ -4,9 +4,11 @@ pub mod import;
 pub mod meta;
 pub mod model;
 pub mod scan;
+pub mod scope;
 pub mod search;
 pub mod settings;
 pub mod thumb;
+pub mod tray;
 pub mod vectors;
 
 use serde::{Deserialize, Serialize};
@@ -83,10 +85,15 @@ impl Computed {
 pub struct Engine {
   pub root: PathBuf,
   pub cache_dir: PathBuf,
+  /// Only the files in scope: browsing, search and indexing all start here.
   pub files: Vec<scan::RawFile>,
+  /// Kept for every walked file, excluded ones too, so bringing a folder back
+  /// into scope costs nothing.
   pub computed: BTreeMap<String, Computed>,
   pub pending: Vec<usize>,
   pub vectors: vectors::Vectors,
+  pub scope: scope::Scope,
+  pub tree: Vec<scope::FolderCount>,
 }
 
 /// What the background work is doing right now. The UI mirrors this instead of
@@ -149,6 +156,7 @@ fn remember_vault(path: &str) {
     config_path(),
     serde_json::to_string_pretty(&json!({ "recent": recent })).unwrap_or_default(),
   );
+  tray::refresh();
 }
 
 fn cache_path(root: &Path) -> PathBuf {
@@ -224,16 +232,20 @@ fn settled(engine: &Engine) -> usize {
     .count()
 }
 
-fn snapshot(engine: &Engine) -> Value {
-  let entries: Vec<Entry> = engine
+/// The vault as the frontend first sees it. `sort` matches what the first
+/// search will answer with, so the wall does not reorder itself once that lands.
+fn snapshot(engine: &Engine, sort: &str) -> Value {
+  let mut entries: Vec<Entry> = engine
     .files
     .iter()
     .map(|f| entry_from(f, engine.computed.get(&f.rel_path), &engine.root, &engine.vectors))
     .collect();
+  search::sort_static(&mut entries, sort);
   let indexed = entries.iter().filter(|e| e.indexed).count();
   let embedded = settled(engine);
   json!({
     "root": engine.root.to_string_lossy(),
+    "scope": { "chosen": engine.scope.chosen, "excluded": engine.scope.excluded, "tree": engine.tree },
     "folders": folders_of(&engine.files),
     "entries": entries,
     "indexed": indexed,
@@ -257,6 +269,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "refresh" => refresh(),
     "import" => import(args),
     "undo_import" => undo_import(args),
+    "set_scope" => set_scope(args),
     "take_dirty" => Ok(json!({ "dirty": DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) })),
     "warm_model" => warm_model(),
     "settings" => serde_json::to_value(settings::get()).map_err(|e| e.to_string()),
@@ -289,7 +302,7 @@ fn selfcheck_report(args: &Value) -> Result<Value, String> {
 
 /// A model loaded under the old settings is stopped; the next search starts it
 /// with the new idle timeout. The dirty flag makes the frontend rescan, which
-/// picks up changed ignored folders and the embedding work semantic now owes.
+/// picks up the embedding work semantic now owes.
 fn save_settings(args: &Value) -> Result<Value, String> {
   let (before, next) = settings::save(args)?;
   if !next.semantic || next.model_idle_secs != before.model_idle_secs {
@@ -316,20 +329,19 @@ fn open_vault(args: &Value) -> Result<Value, String> {
   }
   let cache_dir = cache_path(&expanded);
   let _ = std::fs::create_dir_all(cache_dir.join("thumbs"));
-  let files = scan::walk(&expanded, &settings::get().ignored);
-  let mut computed = load_cache(&cache_dir);
-  let keep: std::collections::BTreeSet<String> = files.iter().map(|f| f.rel_path.clone()).collect();
-  computed.retain(|rel, _| keep.contains(rel));
-  let store = vectors::Vectors::open(&cache_dir.join("vectors.db"))?;
-  store.retain(&files.iter().map(|f| f.rel_path.clone()).collect::<Vec<_>>())?;
-  let pending: Vec<usize> = files
-    .iter()
-    .enumerate()
-    .filter(|(_, f)| !computed.get(&f.rel_path).map(|c| c.matches(f)).unwrap_or(false))
-    .map(|(i, _)| i)
-    .collect();
-  let engine = Engine { root: expanded.clone(), cache_dir, files, computed, pending, vectors: store };
-  let view = snapshot(&engine);
+  let mut engine = Engine {
+    root: expanded.clone(),
+    computed: load_cache(&cache_dir),
+    vectors: vectors::Vectors::open(&cache_dir.join("vectors.db"))?,
+    cache_dir,
+    files: Vec::new(),
+    pending: Vec::new(),
+    scope: scope::read(&expanded),
+    tree: Vec::new(),
+  };
+  rescan(&mut engine)?;
+  let sort = args.get("sort").and_then(Value::as_str).unwrap_or("name");
+  let view = snapshot(&engine, sort);
   remember_vault(&expanded.to_string_lossy());
   *ENGINE.lock().expect("engine lock") = Some(engine);
   watch_folder(&expanded);
@@ -359,20 +371,43 @@ fn watch_folder(root: &Path) {
   });
 }
 
-fn refresh() -> Result<Value, String> {
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  let files = scan::walk(&engine.root, &settings::get().ignored);
-  let keep: std::collections::BTreeSet<String> = files.iter().map(|f| f.rel_path.clone()).collect();
-  engine.computed.retain(|rel, _| keep.contains(rel));
-  engine.pending = files
+/// Walks the whole vault: the tree and the caches follow what is on disk, and
+/// only files in scope become the engine's files and pending work.
+fn rescan(engine: &mut Engine) -> Result<(), String> {
+  let walked = scan::walk(&engine.root);
+  let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
+  let keep_set: std::collections::BTreeSet<&String> = keep.iter().collect();
+  engine.computed.retain(|rel, _| keep_set.contains(rel));
+  engine.vectors.retain(&keep)?;
+  engine.tree = scope::tree(&walked);
+  engine.files = walked.into_iter().filter(|f| engine.scope.contains(&f.rel_path)).collect();
+  engine.pending = engine
+    .files
     .iter()
     .enumerate()
     .filter(|(_, f)| !engine.computed.get(&f.rel_path).map(|c| c.matches(f)).unwrap_or(false))
     .map(|(i, _)| i)
     .collect();
-  engine.files = files;
-  Ok(snapshot(engine))
+  Ok(())
+}
+
+fn refresh() -> Result<Value, String> {
+  let mut guard = ENGINE.lock().expect("engine lock");
+  let engine = guard.as_mut().ok_or("no vault open")?;
+  rescan(engine)?;
+  Ok(snapshot(engine, "name"))
+}
+
+/// Saves the folders the user left out and answers with the view they leave.
+/// The first save is what marks the scope as chosen.
+fn set_scope(args: &Value) -> Result<Value, String> {
+  let excluded: Vec<String> = serde_json::from_value(args.get("excluded").cloned().unwrap_or(json!([])))
+    .map_err(|e| format!("excluded is malformed: {e}"))?;
+  let mut guard = ENGINE.lock().expect("engine lock");
+  let engine = guard.as_mut().ok_or("no vault open")?;
+  engine.scope = scope::write(&engine.root, excluded)?;
+  rescan(engine)?;
+  Ok(snapshot(engine, "name"))
 }
 
 /// Writes dropped items into a vault folder, then rescans so the reply already
@@ -501,7 +536,7 @@ fn index_slice(args: &Value) -> Result<Value, String> {
   if derived > 0 || embedded_now > 0 {
     save_cache(&engine.cache_dir, &engine.computed);
   }
-  let indexed = engine.computed.len();
+  let indexed = engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count();
   let embedded = settled(engine);
   Ok(json!({
     "indexed": indexed,
@@ -520,8 +555,24 @@ pub fn run_tauri() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![command])
-    .run(tauri::generate_context!())
-    .expect("error while running the app");
+    .setup(|app| Ok(tray::install(app.handle())?))
+    // Closing hides the window; the menu bar icon quits.
+    .on_window_event(|window, event| {
+      if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+      }
+    })
+    .build(tauri::generate_context!())
+    .expect("error while building the app")
+    .run(|app, event| {
+      // A Dock click brings back the window that closing hid.
+      #[cfg(target_os = "macos")]
+      if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = event {
+        tray::show_window(app);
+      }
+      let _ = (app, event);
+    });
 }
 
 #[tauri::command]

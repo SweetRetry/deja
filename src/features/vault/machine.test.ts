@@ -1,7 +1,7 @@
 // npm run test:unit  (Node 24 strips the types)
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Entry, VaultView } from "../../lib/types.ts";
+import type { Entry, Scope, VaultView } from "../../lib/types.ts";
 import type { Progress, SessionEvent } from "./events.ts";
 import { initialVault, reduceVault, shouldIndex, type VaultState } from "./machine.ts";
 
@@ -31,8 +31,10 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
   };
 }
 
-function view(entries: Entry[], indexed = 0, embedded = 0): VaultView {
-  return { root: "/v", folders: [], entries, indexed, embedded, total: entries.length, model: { ready: false } };
+const chosen: Scope = { chosen: true, excluded: [], tree: [] };
+
+function view(entries: Entry[], indexed = 0, embedded = 0, scope = chosen): VaultView {
+  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length, model: { ready: false } };
 }
 
 const four = [entry("a.jpg"), entry("b.jpg"), entry("p/c.jpg"), entry("p/q/d.jpg")];
@@ -108,7 +110,7 @@ test("model ready re-arms the search in any phase, including paused", () => {
 });
 
 test("close clears the folder but keeps a warm model and the settings", () => {
-  const settings = { semantic: true, modelIdleSecs: 60, ignored: [] };
+  const settings = { semantic: true, modelIdleSecs: 60 };
   const closed = run([{ type: "SETTINGS", settings }, { type: "MODEL_READY" }, { type: "CLOSE" }], ready);
   assert.equal(closed.phase, "idle");
   assert.equal(closed.library, null);
@@ -174,4 +176,27 @@ test("a rescan while an edit is in flight keeps the edit", () => {
   const edited = reduceVault(ready, { type: "META_EDITED", relPath: "a.jpg", meta: meta(3) });
   const rescanned = reduceVault(edited, { type: "RESCANNED", view: view(four, 4, 4) });
   assert.equal(rescanned.library?.byPath["a.jpg"]?.rating, 3);
+});
+
+const unscoped = view(four, 0, 0, { chosen: false, excluded: [], tree: [{ path: "", files: 4 }] });
+const asking = run([{ type: "OPEN", path: "/v" }, { type: "OPENED", view: unscoped }]);
+
+test("a folder opened for the first time waits for its scope before indexing", () => {
+  assert.equal(asking.phase, "scoping");
+  assert.equal(shouldIndex(asking), false);
+  assert.equal(reduceVault(asking, slice({ indexed: 4, remaining: 0 })), asking, "no slice runs while asking");
+  assert.equal(reduceVault(asking, { type: "PAUSE" }), asking, "there is nothing to pause");
+});
+
+test("a rescan while asking keeps asking, and the answer starts the work", () => {
+  assert.equal(reduceVault(asking, { type: "RESCANNED", view: unscoped }).phase, "scoping");
+  const scoped = reduceVault(asking, { type: "SCOPED", view: view(four.slice(0, 2)) });
+  assert.equal(scoped.phase, "deriving");
+  assert.equal(scoped.progress.total, 2);
+  assert.equal(scoped.library?.scope.chosen, true);
+});
+
+test("narrowing the scope later keeps a pause", () => {
+  const paused = reduceVault(ready, { type: "PAUSE" });
+  assert.equal(reduceVault(paused, { type: "SCOPED", view: view(four.slice(0, 1), 1, 1) }).phase, "paused");
 });

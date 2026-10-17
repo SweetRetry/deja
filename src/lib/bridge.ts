@@ -38,7 +38,7 @@ async function call<T>(name: string, args: unknown = {}): Promise<T> {
 }
 
 export const api = {
-  openVault: (path: string) => call<VaultView>("open_vault", { path }),
+  openVault: (path: string, sort: Sort) => call<VaultView>("open_vault", { path, sort }),
   search: (query: string, filter: Filter, sort: Sort, semantic: boolean) =>
     call<SearchResponse>("search", {
       query,
@@ -52,6 +52,7 @@ export const api = {
   refresh: () => call<VaultView>("refresh"),
   importItems: (folder: string, items: ImportItem[]) => call<ImportResponse>("import", { folder, items }),
   undoImport: (relPaths: string[]) => call<{ view: VaultView }>("undo_import", { relPaths }),
+  setScope: (excluded: string[]) => call<VaultView>("set_scope", { excluded }),
   takeDirty: () => call<{ dirty: boolean }>("take_dirty"),
   settings: () => call<AppSettings>("settings"),
   saveSettings: (settings: AppSettings) => call<AppSettings>("save_settings", { settings }),

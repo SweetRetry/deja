@@ -66,3 +66,22 @@ export function neighbor(placed: Placed[], relPath: string, direction: Direction
   }
   return best?.entry.relPath ?? null;
 }
+
+const ARROWS: Partial<Record<string, Direction>> = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+};
+
+/** Where a navigation key moves the selection from `origin`: undefined when
+ *  the key does not navigate, null at an edge. An origin off the wall starts
+ *  from the first tile. */
+export function step(placed: Placed[], origin: string | null, key: string): string | null | undefined {
+  if (key === "Home") return placed[0]?.entry.relPath ?? null;
+  if (key === "End") return placed.at(-1)?.entry.relPath ?? null;
+  const direction = ARROWS[key];
+  if (!direction) return undefined;
+  const onWall = origin !== null && placed.some((tile) => tile.entry.relPath === origin);
+  return onWall ? neighbor(placed, origin, direction) : (placed[0]?.entry.relPath ?? null);
+}

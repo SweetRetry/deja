@@ -76,3 +76,26 @@ test("opening disables the pause button and idle shows nothing", () => {
   assert.equal(indexStatus({ ...base, phase: "idle" }), null);
   assert.equal(indexStatus({ ...base, phase: "failed" }), null);
 });
+
+test("a settled folder does not warn about the model", () => {
+  const status = indexStatus({
+    ...base,
+    phase: "ready",
+    model: "unknown",
+    settings: { semantic: true, modelIdleSecs: 300 },
+    progress: { indexed: 10, embedded: 10, total: 10, remaining: 0 },
+  });
+  assert.equal(status?.label, "索引已完成");
+  assert.equal(status?.notice, null);
+});
+
+test("waiting for a scope has nothing to pause and no model notice", () => {
+  const status = indexStatus({
+    ...base,
+    phase: "scoping",
+    model: "unknown",
+    settings: { semantic: true, modelIdleSecs: 300 },
+    progress: { indexed: 0, embedded: 0, total: 10, remaining: 10 },
+  });
+  assert.deepEqual(status, { tone: "muted", label: "等待选择索引范围", notice: null, pausable: false, paused: false });
+});

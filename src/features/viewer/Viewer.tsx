@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { CaretLeftIcon, CaretRightIcon, XIcon } from "@phosphor-icons/react";
+import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, type Transition } from "motion/react";
 import { useRoot, useSelectedEntry, useWallEntries } from "@/app/selectors";
 import { useSession } from "@/app/store";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { closeViewer, select } from "@/features/browse/commands";
 import { fileUrl, thumbUrl } from "@/lib/bridge";
 import type { Entry } from "@/lib/types";
+import { Filmstrip } from "./Filmstrip";
 import { mediaLayoutId } from "./shared";
 
 /** Opening grows the wall tile into place; stepping with the arrows swaps at once. */
@@ -93,7 +94,7 @@ function ViewerContent() {
       <Dialog.Backdrop
         hidden={false}
         render={<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />}
-        className="fixed inset-0 z-50 bg-background/95"
+        className="fixed inset-0 z-50 bg-background"
       />
       <Dialog.Popup
         ref={popup}
@@ -108,41 +109,28 @@ function ViewerContent() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           onClick={closeOnSelf}
-          className="flex h-12 shrink-0 items-center gap-2 pr-2 pl-4"
+          // The title sits at the window's top centre rather than beside the
+          // traffic lights, so the header centres it and the close button is
+          // laid over the right edge instead of taking a slot in the row.
+          className="relative flex h-12 shrink-0 items-center justify-center px-24"
         >
-          <div className="pointer-events-none flex min-w-0 flex-1 items-baseline gap-2">
-            <Dialog.Title className="truncate text-sm font-medium text-foreground">{entry.name}</Dialog.Title>
-            <Dialog.Description className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {index >= 0 ? `${index + 1} / ${entries.length}` : null}
-              {index >= 0 && entry.width && entry.height ? " · " : null}
-              {entry.width && entry.height ? `${entry.width} × ${entry.height}` : null}
-            </Dialog.Description>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="上一张"
-            disabled={!previous}
-            onClick={() => previous && select(previous.relPath, true)}
+          <Dialog.Title className="pointer-events-none truncate text-sm font-medium text-foreground">
+            {entry.name}
+          </Dialog.Title>
+          <Dialog.Close
+            render={<Button variant="ghost" size="icon-sm" aria-label="关闭预览" className="absolute right-2" />}
           >
-            <CaretLeftIcon aria-hidden />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="下一张"
-            disabled={!next}
-            onClick={() => next && select(next.relPath, true)}
-          >
-            <CaretRightIcon aria-hidden />
-          </Button>
-          <Dialog.Close render={<Button variant="ghost" size="icon-sm" aria-label="关闭预览" />}>
             <XIcon aria-hidden />
           </Dialog.Close>
         </motion.header>
-        <div onClick={closeOnSelf} className="flex min-h-0 flex-1 items-center justify-center px-6 pb-6 @container-size">
+        <div onClick={closeOnSelf} className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4 @container-size">
           <Picture key={entry.relPath} entry={entry} root={root} transition={origin === null ? SWAP : GROW} />
         </div>
+        {index >= 0 && entries.length > 1 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="shrink-0 px-6 pb-4">
+            <Filmstrip entries={entries} index={index} />
+          </motion.div>
+        ) : null}
       </Dialog.Popup>
     </>
   );

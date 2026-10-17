@@ -15,7 +15,7 @@ import { folderRows, openAncestors } from "./folder-tree";
 
 const INDENT = 16;
 // Room for the chevron before the folder icon, so rows with and without
-// children line up.
+// children line up. A flat library has no chevrons and keeps the room for names.
 const GUTTER = 16;
 
 function openFolder(folder: string) {
@@ -42,6 +42,7 @@ export function FolderNav() {
     setToggled((state) => openAncestors(state, active));
   }
   const rows = useMemo(() => folderRows(folders ?? [], toggled), [folders, toggled]);
+  const gutter = rows.some((row) => row.hasChildren) ? GUTTER : 0;
 
   return (
     <>
@@ -67,7 +68,9 @@ export function FolderNav() {
                   <SidebarMenuButton
                     isActive={active === row.rel}
                     onClick={() => openFolder(row.rel)}
-                    style={{ paddingLeft: 8 + GUTTER + row.depth * INDENT }}
+                    style={{ paddingLeft: 8 + gutter + row.depth * INDENT }}
+                    // The tooltip only shows while the sidebar is collapsed; a cut-off name still reads in full.
+                    title={row.name}
                   >
                     <FolderSimpleIcon aria-hidden />
                     <span className="truncate">{row.name}</span>

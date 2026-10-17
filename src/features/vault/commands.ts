@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { dispatch } from "@/app/store";
+import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
 import { readStored, writeStored } from "@/lib/storage";
@@ -12,7 +12,9 @@ const message = (problem: unknown) => (problem instanceof Error ? problem.messag
 export async function openVault(path: string) {
   dispatch({ type: "OPEN", path });
   try {
-    const view = await api.openVault(path);
+    // Opened in the order this window sorts in, so the wall the open paints is
+    // the wall the first search answers with.
+    const view = await api.openVault(path, session().browse.sort);
     writeStored(LAST_VAULT, path);
     dispatch({ type: "OPENED", view });
   } catch (problem) {

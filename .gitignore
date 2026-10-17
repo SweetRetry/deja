@@ -8,3 +8,7 @@ public/vault
 .e2e-data
 
 sidecar/eval/.cache/
+
+# scratch from a debugging session
+.probe
+*.tsbuildinfo

@@ -25,7 +25,7 @@ export function Inspector() {
   return (
     <aside className="relative isolate h-full w-full" aria-label="检视面板" data-entry={entry.relPath}>
       <InspectorHeader entry={entry} />
-      <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 pt-12 pb-6">
+      <div className="flex h-full flex-col gap-6 overflow-y-auto px-6 pt-16 pb-6">
         <div className="flex flex-col gap-3">
           <Preview entry={entry} />
           <Button variant="secondary" className="w-full" onClick={() => void findSimilar(entry.relPath)}>

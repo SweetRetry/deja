@@ -23,8 +23,24 @@ export type Entry = EntryMeta & {
   embedded: boolean;
 };
 
+/** One folder on disk and the images and videos under it, at any depth. */
+export type FolderCount = { path: string; files: number };
+
+/**
+ * Which parts of a vault are indexed. Excluding a folder leaves its whole
+ * subtree out; folders that appear later are in. `chosen` is false until the
+ * user has picked once for this vault, and nothing is indexed before that.
+ */
+export type Scope = {
+  chosen: boolean;
+  excluded: string[];
+  /** Every folder found on disk, excluded ones included, "" being the vault root. */
+  tree: FolderCount[];
+};
+
 export type VaultView = {
   root: string;
+  scope: Scope;
   folders: string[];
   entries: Entry[];
   indexed: number;
@@ -33,9 +49,9 @@ export type VaultView = {
   model: { ready: boolean };
 };
 
-/** What the backend acts on: the model process and the folder scan. It lives
- *  in settings.json under the app's data dir (settings.rs). */
-export type AppSettings = { semantic: boolean; modelIdleSecs: number; ignored: string[] };
+/** What the backend acts on: the model process. It lives in settings.json
+ *  under the app's data dir (settings.rs). */
+export type AppSettings = { semantic: boolean; modelIdleSecs: number };
 
 export type Sort = "name" | "modified" | "size" | "rating";
 

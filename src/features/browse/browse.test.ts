@@ -38,6 +38,8 @@ const response = (paths: string[]): SearchResponse => ({
   tookMs: 0,
 });
 
+const scope = { chosen: true, excluded: [], tree: [] };
+
 const open = run([
   { type: "OPEN", path: "/v" },
   {
@@ -45,6 +47,7 @@ const open = run([
     view: {
       root: "/v",
       folders: ["p"],
+      scope,
       entries: ["a.jpg", "b.jpg", "p/c.jpg"].map(entry),
       indexed: 3,
       embedded: 3,
@@ -123,7 +126,7 @@ test("an import selects what arrived and leaves the similar view", () => {
   const similar = reduce(open, { type: "SIMILAR_REQUESTED", source: "a.jpg" });
   const imported = reduce(similar, {
     type: "RESCANNED",
-    view: { root: "/v", folders: [], entries: [entry("new.jpg")], indexed: 0, embedded: 0, total: 1, model: { ready: false } },
+    view: { root: "/v", folders: [], scope, entries: [entry("new.jpg")], indexed: 0, embedded: 0, total: 1, model: { ready: false } },
     select: "new.jpg",
   });
   assert.equal(imported.browse.selected, "new.jpg");

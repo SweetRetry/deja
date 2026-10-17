@@ -116,6 +116,11 @@ mkdirSync(join(ROOT, "node_modules"), { recursive: true });
 copyFileSync(sourcePath("02"), join(ROOT, "node_modules/ignored.jpg"));
 writeFileSync(join(ROOT, "README.md"), "# 素材库\n\n不是图片，不该进索引。\n");
 
+// The scope is already chosen (everything in), so tests open straight onto
+// the wall; the first-run picker has its own test on a scratch copy.
+mkdirSync(join(ROOT, ".shelf"), { recursive: true });
+writeFileSync(join(ROOT, ".shelf/scope.json"), JSON.stringify({ excluded: [] }) + "\n");
+
 for (const [relPath, info] of Object.entries(meta)) {
   const target = join(ROOT, ".shelf/meta", `${relPath}.md`);
   mkdirSync(dirname(target), { recursive: true });

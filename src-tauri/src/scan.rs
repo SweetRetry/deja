@@ -33,8 +33,9 @@ fn modified_ms(path: &Path) -> i64 {
     .unwrap_or(0)
 }
 
-/// `ignored` adds folder names the user chose to skip to the built-in list.
-pub fn walk(root: &Path, ignored: &[String]) -> Vec<RawFile> {
+/// Every image and video under `root`, whatever the vault's scope says; dot
+/// folders (`.git`, `.shelf`) and the built-in list are never media.
+pub fn walk(root: &Path) -> Vec<RawFile> {
   let mut files = Vec::new();
   let mut stack = vec![root.to_path_buf()];
   while let Some(dir) = stack.pop() {
@@ -45,7 +46,7 @@ pub fn walk(root: &Path, ignored: &[String]) -> Vec<RawFile> {
     for entry in entries.flatten() {
       let path = entry.path();
       let name = entry.file_name().to_string_lossy().to_string();
-      if name.starts_with('.') || IGNORED_DIRS.contains(&name.as_str()) || ignored.contains(&name) {
+      if name.starts_with('.') || IGNORED_DIRS.contains(&name.as_str()) {
         continue;
       }
       let file_type = match entry.file_type() {

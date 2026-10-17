@@ -187,3 +187,16 @@ test("瀑布流与网格可以切换", async ({ page }) => {
   await page.getByRole("button", { name: "瀑布流" }).click();
   await expect(page.getByTestId("grid")).toHaveAttribute("data-layout", "masonry");
 });
+
+test("每项页脚给出类型图标与评分，未评分的不占位", async ({ page }) => {
+  await openVault(page);
+  const tile = (relPath: string) => page.locator(`[data-rel-path="${relPath}"]`);
+
+  // 12 files, so each tile is measured against the same wall.
+  await expect(page.getByTestId("thumb")).toHaveCount(12);
+  await expect(tile("摄影/风景/海边-dusk.jpg")).toHaveAttribute("data-kind", "image");
+  await expect(tile("摄影/风景/海边-dusk.jpg").getByTestId("tile-rating")).toHaveAttribute("data-rating", "5");
+  await expect(tile("UI参考/登录页/渐变按钮-03.jpg").getByTestId("tile-rating")).toHaveAttribute("data-rating", "3");
+  // 黄昏逆光-01 ships without meta, so its footer carries no stars at all.
+  await expect(tile("摄影/人像/黄昏逆光-01.jpg").getByTestId("tile-rating")).toHaveCount(0);
+});

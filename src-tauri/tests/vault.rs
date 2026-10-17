@@ -1,7 +1,8 @@
 // Integration test over a real folder: the same fixture vault the app shows.
 // Proves scanning, metadata round trips, and that a thumbnail lands on disk and
 // decodes, without needing the GUI.
-use shelf_lib::{color, meta, scan, thumb};
+use serde_json::json;
+use shelf_lib::{color, dispatch, meta, scan, thumb};
 use std::path::{Path, PathBuf};
 
 fn workspace() -> PathBuf {
@@ -34,7 +35,7 @@ fn temp_vault(name: &str) -> PathBuf {
 #[test]
 fn scans_the_fixture_vault_and_ignores_noise() {
   let vault = temp_vault("scan");
-  let files = scan::walk(&vault, &[]);
+  let files = scan::walk(&vault);
   let paths: Vec<String> = files.iter().map(|file| file.rel_path.clone()).collect();
 
   assert_eq!(files.len(), 12, "twelve images, got {paths:?}");
@@ -56,16 +57,46 @@ fn scans_the_fixture_vault_and_ignores_noise() {
   let _ = std::fs::remove_dir_all(&vault);
 }
 
+// The one test that drives the global engine through `dispatch`, the way the
+// frontend does; semantic is off so no model process starts.
 #[test]
-fn a_folder_the_user_ignores_drops_out_at_any_depth() {
-  let vault = temp_vault("ignored");
-  let paths: Vec<String> = scan::walk(&vault, &["人像".to_string()])
-    .iter()
-    .map(|file| file.rel_path.clone())
-    .collect();
-  assert!(!paths.iter().any(|path| path.contains("/人像/")), "nested 摄影/人像 is skipped, got {paths:?}");
-  assert!(paths.contains(&"乱码名-A7f3.jpg".to_string()), "the rest of the vault still scans");
+fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
+  let vault = temp_vault("scope");
+  // The fixture ships a chosen scope so e2e skips the picker; this is a first open.
+  let _ = std::fs::remove_file(vault.join(".shelf/scope.json"));
+  let data = vault.with_extension("data");
+  std::fs::create_dir_all(&data).expect("data dir");
+  std::fs::write(data.join("settings.json"), r#"{"semantic":false}"#).expect("settings");
+  std::env::set_var("SHELF_DATA_DIR", &data);
+  let rels = |view: &serde_json::Value| -> Vec<String> {
+    view["entries"].as_array().expect("entries").iter().map(|e| e["relPath"].as_str().unwrap().to_string()).collect()
+  };
+
+  let first = dispatch("open_vault", &json!({ "path": vault })).expect("open");
+  assert_eq!(first["scope"]["chosen"], json!(false), "no scope.json yet means the user has not picked");
+  assert_eq!(first["scope"]["excluded"], json!([]));
+  assert_eq!(first["scope"]["tree"][0], json!({ "path": "", "files": 12 }), "the root comes first and counts all");
+  assert_eq!(first["total"], json!(12));
+  let progress = dispatch("index_slice", &json!({ "batch": 100 })).expect("index");
+  assert_eq!((progress["indexed"].clone(), progress["remaining"].clone()), (json!(12), json!(0)));
+
+  let narrowed = dispatch("set_scope", &json!({ "excluded": ["摄影/人像", "摄影/人像/深"] })).expect("set scope");
+  assert_eq!(narrowed["scope"]["chosen"], json!(true));
+  assert_eq!(narrowed["scope"]["excluded"], json!(["摄影/人像"]), "a path inside another is dropped");
+  assert_eq!(narrowed["total"], json!(9));
+  assert!(!rels(&narrowed).iter().any(|rel| rel.starts_with("摄影/人像/")), "the subtree left the entries");
+  assert!(narrowed["scope"]["tree"].as_array().unwrap().contains(&json!({ "path": "摄影/人像", "files": 3 })), "but stays in the tree");
+  assert!(!narrowed["folders"].as_array().unwrap().contains(&json!("摄影/人像")), "and leaves the folder list");
+  let raw = std::fs::read_to_string(vault.join(".shelf/scope.json")).expect("scope.json written");
+  assert_eq!(serde_json::from_str::<serde_json::Value>(&raw).unwrap(), json!({ "excluded": ["摄影/人像"] }));
+  let search = dispatch("search", &json!({ "query": "逆光", "semantic": false })).expect("search");
+  assert!(!rels(&search).iter().any(|rel| rel.starts_with("摄影/人像/")), "search only sees files in scope");
+
+  let restored = dispatch("set_scope", &json!({ "excluded": [] })).expect("restore");
+  assert_eq!(rels(&restored), rels(&first), "every entry is back");
+  assert_eq!((restored["indexed"].clone(), restored["phase"].clone()), (json!(12), json!("ready")), "from the cache, nothing pending");
   let _ = std::fs::remove_dir_all(&vault);
+  let _ = std::fs::remove_dir_all(&data);
 }
 
 #[test]
@@ -80,7 +111,7 @@ fn matches_the_shared_contract_file() {
     .map(|row| row["relPath"].as_str().expect("relPath").to_string())
     .collect();
   let vault = temp_vault("contract");
-  let actual: Vec<String> = scan::walk(&vault, &[]).iter().map(|file| file.rel_path.clone()).collect();
+  let actual: Vec<String> = scan::walk(&vault).iter().map(|file| file.rel_path.clone()).collect();
   assert_eq!(actual, expected, "the scanner and the e2e fixture describe the same vault");
   let _ = std::fs::remove_dir_all(&vault);
 }
@@ -114,7 +145,7 @@ fn metadata_round_trips_through_disk() {
 fn thumbnail_lands_on_disk_and_decodes() {
   let vault = temp_vault("thumb");
   let cache = vault.join(".cache");
-  let file = scan::walk(&vault, &[])
+  let file = scan::walk(&vault)
     .into_iter()
     .find(|file| file.rel_path == "摄影/风景/海边-dusk.jpg")
     .expect("fixture present");

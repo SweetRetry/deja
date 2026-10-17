@@ -11,6 +11,8 @@ export type SessionEvent =
   | { type: "OPENED"; view: VaultView }
   | { type: "OPEN_FAILED"; error: string }
   | { type: "CLOSE" }
+  /** The user picked which folders to index; the view is rescanned under it. */
+  | { type: "SCOPED"; view: VaultView }
   /** The folder changed on disk (Finder, an import, an undo). `select` picks a file in it. */
   | { type: "RESCANNED"; view: VaultView; select?: string }
   // Background indexing and the model process

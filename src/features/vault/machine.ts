@@ -2,10 +2,19 @@
 // an async result landing in a state that no longer existed. Here each event
 // declares which phases accept it, so a stale response is dropped instead of
 // overwriting the present.
-import type { AppSettings, Entry, EntryMeta, VaultView } from "../../lib/types.ts";
+import type { AppSettings, Entry, EntryMeta, Scope, VaultView } from "../../lib/types.ts";
 import type { Progress, SessionEvent } from "./events.ts";
 
-export type Phase = "idle" | "opening" | "deriving" | "embedding" | "ready" | "paused" | "failed";
+export type Phase =
+  | "idle"
+  | "opening"
+  /** Opened for the first time: waits for the user to pick what to index. */
+  | "scoping"
+  | "deriving"
+  | "embedding"
+  | "ready"
+  | "paused"
+  | "failed";
 
 export type ModelState = "unknown" | "warming" | "ready" | "failed";
 
@@ -15,6 +24,7 @@ type IndexPhase = Extract<Phase, "deriving" | "embedding">;
 export type Library = {
   root: string;
   folders: string[];
+  scope: Scope;
   byPath: Record<string, Entry>;
   /** Files under each folder path; "" is the whole vault. */
   counts: Record<string, number>;
@@ -95,6 +105,7 @@ function libraryOf(view: VaultView, saving: Record<string, Saving>, previous: Li
   return {
     root: view.root,
     folders: view.folders,
+    scope: view.scope,
     byPath: merge(previous?.byPath ?? {}, view.entries, saving),
     counts,
   };
@@ -116,7 +127,8 @@ export function reduceVault(vault: VaultState, event: SessionEvent): VaultState 
       if (vault.phase !== "opening") return vault;
       return {
         ...vault,
-        phase: phaseFor(progressOf(event.view)),
+        // Nothing is indexed before the user has said what to index.
+        phase: event.view.scope.chosen ? phaseFor(progressOf(event.view)) : "scoping",
         path: event.view.root,
         library: libraryOf(event.view, {}, null),
         progress: progressOf(event.view),
@@ -133,16 +145,20 @@ export function reduceVault(vault: VaultState, event: SessionEvent): VaultState 
       return { ...initialVault, model: vault.model, modelEpoch: vault.modelEpoch, settings: vault.settings };
 
     case "RESCANNED":
+    case "SCOPED": {
       // Counts always update; the phase only moves while the folder is being
-      // worked on or has settled, and a pause holds.
+      // worked on or has settled. A pause holds, and so does an unanswered
+      // scope question unless this is its answer.
       if (!vault.library || vault.phase === "opening") return vault;
+      const held = vault.phase === "paused" || (vault.phase === "scoping" && event.type !== "SCOPED");
       return {
         ...vault,
         library: libraryOf(event.view, vault.saving, vault.library),
         progress: progressOf(event.view),
-        phase: vault.phase === "paused" ? "paused" : phaseFor(progressOf(event.view)),
+        phase: held ? vault.phase : phaseFor(progressOf(event.view)),
         revision: vault.revision + 1,
       };
+    }
 
     case "SLICE":
       if (!shouldIndex(vault)) return vault;

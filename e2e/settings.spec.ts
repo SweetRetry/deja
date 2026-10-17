@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const API = "http://127.0.0.1:5177/api";
-const DEFAULTS = { semantic: true, modelIdleSecs: 300, ignored: [] };
+const DEFAULTS = { semantic: true, modelIdleSecs: 300 };
 
 async function openVault(page: Page) {
   await page.goto("/");
@@ -29,22 +29,6 @@ test("主题切到浅色后去掉 dark，刷新后仍是浅色", async ({ page }
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await page.reload();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-});
-
-test("忽略「人像」后其中 3 张离开素材墙，移除后回来", async ({ page }) => {
-  await openVault(page);
-  await expect(page.getByTestId("thumb")).toHaveCount(12);
-  await openSettings(page);
-  await page.getByLabel("添加忽略的文件夹").fill("人像");
-  await page.getByLabel("添加忽略的文件夹").press("Enter");
-  await expect(page.getByRole("button", { name: "不再忽略「人像」" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("thumb")).toHaveCount(9, { timeout: 8_000 });
-
-  await openSettings(page);
-  await page.getByRole("button", { name: "不再忽略「人像」" }).click();
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("thumb")).toHaveCount(12, { timeout: 8_000 });
 });
 
 test("关闭语义搜索后不再提供搜索方式，后端也只按关键词排序", async ({ page, request }) => {

@@ -150,7 +150,7 @@ fn orientation_of(entry: &Entry) -> &'static str {
   }
 }
 
-fn sort_static(entries: &mut [Entry], sort: &str) {
+pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
   match sort {
     "modified" => entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.rel_path.cmp(&b.rel_path))),
     "size" => entries.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes).then(a.rel_path.cmp(&b.rel_path))),

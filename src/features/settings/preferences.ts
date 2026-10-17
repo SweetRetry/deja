@@ -7,6 +7,8 @@ import { readStored, writeStored } from "@/lib/storage";
 export type Layout = "masonry" | "grid";
 export type ThumbSize = "small" | "medium" | "large";
 export type Theme = "system" | "light" | "dark";
+/** What the wall does with a semantic result scored under `minMatch`. */
+export type BelowMatch = "dim" | "hide";
 
 export type Preferences = {
   theme: Theme;
@@ -14,6 +16,9 @@ export type Preferences = {
   size: ThumbSize;
   showNames: boolean;
   inspectorWidth: number;
+  /** Lowest match (0–100) a semantic result needs to count; 0 lets every result through. */
+  minMatch: number;
+  belowMatch: BelowMatch;
 };
 
 /** Column width each size asks the wall for, in px. */
@@ -28,18 +33,23 @@ const DEFAULTS: Preferences = {
   size: "medium",
   showNames: false,
   inspectorWidth: INSPECTOR.initial,
+  minMatch: 0,
+  belowMatch: "dim",
 };
 
 function read(): Preferences {
   try {
     const stored = JSON.parse(readStored(KEY) ?? "{}") as Partial<Preferences>;
     const width = Number(stored.inspectorWidth);
+    const minMatch = Number(stored.minMatch);
     return {
       theme: stored.theme === "system" || stored.theme === "light" ? stored.theme : DEFAULTS.theme,
       layout: stored.layout === "grid" ? "grid" : DEFAULTS.layout,
       size: stored.size === "small" || stored.size === "large" ? stored.size : DEFAULTS.size,
       showNames: stored.showNames === true,
       inspectorWidth: width >= INSPECTOR.min && width <= INSPECTOR.max ? width : DEFAULTS.inspectorWidth,
+      minMatch: minMatch >= 0 && minMatch <= 100 ? minMatch : DEFAULTS.minMatch,
+      belowMatch: stored.belowMatch === "hide" ? "hide" : DEFAULTS.belowMatch,
     };
   } catch {
     return DEFAULTS;
@@ -76,3 +86,8 @@ export function startTheme(): () => void {
     unsubscribe();
   };
 }
+
+/** A result the model scored under the lowest match the user accepts. Results
+ *  without a model score (keyword ranking, the similar view) are never below. */
+export const belowMatch = (match: number | null | undefined, minMatch: number) =>
+  match != null && match < minMatch;

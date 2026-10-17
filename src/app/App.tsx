@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { EmptyWall } from "@/features/browse/EmptyWall";
 import { Toolbar } from "@/features/browse/Toolbar";
 import { DropImport } from "@/features/import/DropImport";
+import { ScopeDialog } from "@/features/scope/ScopeDialog";
 import { usePreferences } from "@/features/settings/preferences";
 import { AppSidebar } from "@/features/sidebar/AppSidebar";
 import { CollapsedTrigger } from "@/features/sidebar/CollapsedTrigger";
@@ -35,6 +36,7 @@ export function App() {
       </SidebarInset>
       <Viewer />
       <DropImport />
+      <ScopeDialog />
       <Toaster theme={theme} position="bottom-center" />
     </SidebarProvider>
   );

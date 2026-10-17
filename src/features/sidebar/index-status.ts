@@ -19,9 +19,9 @@ const MODEL_PENDING: Notice = { text: "语义模型就绪前，搜索仅匹配�
 
 type Input = Pick<VaultState, "phase" | "progress" | "model" | "settings">;
 
-function noticeFor({ model, settings }: Input): Notice | null {
+function noticeFor({ model, settings, progress }: Input): Notice | null {
   if (model === "failed") return MODEL_FAILED;
-  if (settings?.semantic && model !== "ready") return MODEL_PENDING;
+  if (settings?.semantic && model !== "ready" && progress.embedded < progress.total) return MODEL_PENDING;
   return null;
 }
 
@@ -29,7 +29,7 @@ function noticeFor({ model, settings }: Input): Notice | null {
 export function indexStatus(vault: Input): IndexStatus | null {
   const { phase, progress, model } = vault;
   const notice = noticeFor(vault);
-  const base = { notice, pausable: phase !== "opening", paused: phase === "paused" };
+  const base = { notice, pausable: phase !== "opening" && phase !== "scoping", paused: phase === "paused" };
 
   switch (phase) {
     case "idle":
@@ -37,6 +37,9 @@ export function indexStatus(vault: Input): IndexStatus | null {
       return null;
     case "opening":
       return { ...base, tone: "muted", label: "正在打开文件夹" };
+    case "scoping":
+      // Nothing runs until the user answers, so there is no model notice either.
+      return { ...base, notice: null, tone: "muted", label: "等待选择索引范围" };
     case "paused":
       return { ...base, tone: "warning", label: "索引已暂停" };
     case "deriving":

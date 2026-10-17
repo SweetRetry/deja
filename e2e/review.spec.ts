@@ -56,7 +56,19 @@ for (const theme of ["dark", "light"] as const) {
     await shot(page, `${theme}-08-settings`);
     await page.keyboard.press("Escape");
 
+    await page.setViewportSize({ width: 900, height: 480 });
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await shot(page, `${theme}-08b-settings-short`);
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    await page.getByRole("button", { name: /文件夹菜单/ }).click();
+    await shot(page, `${theme}-09-vault-menu`);
+    await page.getByRole("menuitem", { name: "选择索引范围…" }).click();
+    await shot(page, `${theme}-10-scope`);
+    await page.keyboard.press("Escape");
+
     await page.setViewportSize({ width: 1024, height: 700 });
-    await shot(page, `${theme}-09-narrow`);
+    await shot(page, `${theme}-11-narrow`);
   });
 }
