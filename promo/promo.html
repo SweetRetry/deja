@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Déjà · promo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&family=JetBrains+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Retry's dark tokens, unchanged: depth is lightness, emerald is scarce,
+         no gradient, no shadow, no glow. */
+      :root {
+        --background: oklch(0.227 0.004 286.1);
+        --sidebar: oklch(0.201 0.004 286);
+        --surface-1: oklch(0.261 0.004 286.1);
+        --surface-2: oklch(0.294 0.004 286.2);
+        --foreground: oklch(0.971 0.003 286.4);
+        --muted: oklch(0.681 0.007 286.2);
+        --subtle: oklch(0.54 0.008 286.1);
+        --border: oklch(0.341 0.003 286.2);
+        --primary: oklch(0.712 0.164 154.1);
+        --curve: cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--background);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
+      }
+
+      #stage {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      .wordmark {
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        line-height: 1;
+        white-space: pre;
+      }
+
+      .card {
+        position: absolute;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--surface-1);
+        overflow: hidden;
+        will-change: transform, opacity;
+      }
+
+      .card img {
+        display: block;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        transform-origin: 0 0;
+      }
+
+      .hair {
+        position: absolute;
+        background: var(--primary);
+        transform-origin: 0 50%;
+        height: 1px;
+      }
+
+      .rule {
+        position: absolute;
+        background: var(--border);
+        transform-origin: 50% 100%;
+        width: 1px;
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0;
+      }
+
+      .caret {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        vertical-align: -0.12em;
+        background: var(--primary);
+      }
+
+      #mark {
+        position: absolute;
+        left: 64px;
+        top: 44px;
+        font-size: 17px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="mark" class="wordmark">Déjà</div>
+
+      <!-- 1. the name -->
+      <section id="s1" class="scene">
+        <div id="s1-title" class="wordmark" style="position: absolute; left: 0; right: 0; top: 366px; text-align: center; font-size: 168px"></div>
+        <div id="s1-rule" class="hair" style="left: 660px; top: 600px; width: 600px"></div>
+        <div id="s1-sub" style="position: absolute; left: 0; right: 0; top: 646px; text-align: center; font-size: 30px; color: var(--muted)"></div>
+        <div id="s1-note" style="position: absolute; left: 0; right: 0; top: 952px; text-align: center; font-size: 17px; color: var(--subtle)"></div>
+      </section>
+
+      <!-- 2. the three columns -->
+      <section id="s2" class="scene">
+        <div id="s2-title" style="position: absolute; left: 0; right: 0; top: 44px; text-align: center; font-size: 34px; font-weight: 500; letter-spacing: -0.02em"></div>
+        <div id="s2-card" class="card" style="left: 240px; top: 118px; width: 1440px; height: 900px">
+          <img id="s2-img" src="../.shots/02-wall.png" />
+        </div>
+        <div id="s2-rule-a" class="rule" style="left: 456px; top: 1018px; height: 30px"></div>
+        <div id="s2-rule-b" class="rule" style="left: 1380px; top: 1018px; height: 30px"></div>
+        <div id="s2-cap-a" style="position: absolute; left: 240px; width: 200px; top: 1056px; font-size: 17px; color: var(--muted)"></div>
+        <div id="s2-cap-b" style="position: absolute; left: 762px; width: 300px; top: 1056px; text-align: center; font-size: 17px; color: var(--muted)"></div>
+        <div id="s2-cap-c" style="position: absolute; left: 1500px; width: 164px; top: 1056px; text-align: right; font-size: 17px; color: var(--muted)"></div>
+      </section>
+
+      <!-- 3. search -->
+      <section id="s3" class="scene">
+        <div id="s3-card" class="card" style="left: 240px; top: 84px; width: 1440px; height: 790px">
+          <img id="s3-img" src="../.shots/04-search.png" />
+        </div>
+        <div id="s3-band" style="position: absolute; left: 0; right: 0; bottom: 0; height: 168px; background: var(--background); border-top: 1px solid var(--border)"></div>
+        <div id="s3-label" style="position: absolute; left: 96px; top: 936px; font-size: 16px; color: var(--subtle)"></div>
+        <div id="s3-query" style="position: absolute; left: 96px; top: 968px; font-size: 44px; font-weight: 500; letter-spacing: -0.02em"></div>
+        <div id="s3-note" style="position: absolute; right: 96px; top: 996px; font-size: 16px; color: var(--subtle)"></div>
+      </section>
+
+      <!-- 4. metadata -->
+      <section id="s4" class="scene">
+        <div id="s4-head" style="position: absolute; left: 132px; top: 262px; font-size: 56px; font-weight: 600; letter-spacing: -0.03em"></div>
+        <div id="s4-body" style="position: absolute; left: 132px; top: 364px; width: 720px; font-size: 24px; line-height: 1.65; color: var(--muted)"></div>
+        <div id="s4-path" class="mono" style="position: absolute; left: 132px; top: 620px; height: 44px; padding: 0 14px; display: flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; color: var(--muted)"></div>
+        <div id="s4-card" class="card" style="left: 1020px; top: 140px; width: 720px; height: 880px">
+          <img id="s4-img" src="../.shots/02-wall.png" />
+        </div>
+      </section>
+
+      <!-- 5. viewer -->
+      <section id="s5" class="scene">
+        <div id="s5-card" class="card" style="left: 210px; top: 76px; width: 1500px; height: 938px">
+          <img id="s5-img" src="../.shots/05-viewer.png" />
+        </div>
+        <div id="s5-cap" style="position: absolute; left: 0; right: 0; top: 1036px; text-align: center; font-size: 18px; color: var(--muted)"></div>
+      </section>
+
+      <!-- 6. end card -->
+      <section id="s6" class="scene">
+        <div id="s6-title" class="wordmark" style="position: absolute; left: 0; right: 0; top: 384px; text-align: center; font-size: 120px"></div>
+        <div id="s6-rule" class="hair" style="left: 810px; top: 546px; width: 300px"></div>
+        <div id="s6-line" style="position: absolute; left: 0; right: 0; top: 598px; text-align: center; font-size: 32px; letter-spacing: -0.01em; color: var(--foreground)"></div>
+        <div id="s6-meta" style="position: absolute; left: 0; right: 0; top: 900px; text-align: center; font-size: 16px; color: var(--subtle)"></div>
+      </section>
+    </div>
+
+    <script>
+      const DURATION = 28;
+      const $ = (id) => document.getElementById(id);
+
+      /** The brand curve, solved so motion does not depend on the compositor. */
+      function bezier(x1, y1, x2, y2) {
+        const at = (p, a, b) => 3 * a * (1 - p) * (1 - p) * p + 3 * b * (1 - p) * p * p + p * p * p;
+        return (x) => {
+          if (x <= 0) return 0;
+          if (x >= 1) return 1;
+          let low = 0;
+          let high = 1;
+          for (let i = 0; i < 18; i += 1) {
+            const mid = (low + high) / 2;
+            if (at(mid, x1, x2) < x) low = mid;
+            else high = mid;
+          }
+          return at((low + high) / 2, y1, y2);
+        };
+      }
+      const out = bezier(0.2, 0, 0, 1);
+      const inOut = bezier(0.5, 0, 0.2, 1);
+
+      /** 0 before `start`, 1 after `start + seconds`, eased between. */
+      const span = (t, start, seconds, ease = out) => ease(Math.min(1, Math.max(0, (t - start) / seconds)));
+      const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+      function show(element, opacity, x = 0, y = 0, scale = 1) {
+        element.style.opacity = String(opacity);
+        element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      }
+
+      /** Types one character at a time so a query reads as it is spoken. */
+      function type(element, text, t, start, perChar, caret) {
+        const count = Math.min(text.length, Math.max(0, Math.floor((t - start) / perChar) + 1));
+        element.textContent = t < start ? "" : text.slice(0, count);
+        if (t < start) return;
+        if (caret) {
+          const node = document.createElement("span");
+          node.className = "caret";
+          node.style.marginLeft = "6px";
+          node.style.opacity = count < text.length || Math.floor(t * 2) % 2 === 0 ? "1" : "0.15";
+          element.appendChild(node);
+        }
+      }
+
+      function render(t) {
+        // 1. the name
+        const enter1 = span(t, 0.1, 0.7);
+        const leave = span(t, 3.45, 0.18);
+        show($("s1"), enter1 * (1 - leave), 0, -30 * leave);
+        $("s1-title").textContent = "Déjà";
+        $("s1-title").style.opacity = String(span(t, 0.15, 0.55));
+        $("s1-title").style.transform = `translateY(${26 * (1 - span(t, 0.15, 0.8))}px)`;
+        $("s1-rule").style.transform = `scaleX(${span(t, 1.0, 0.75, inOut)})`;
+        $("s1-sub").textContent = "一个文件夹，就是素材库。";
+        show($("s1-sub"), span(t, 0.95, 0.6), 0, 14 * (1 - span(t, 0.95, 0.7)));
+        $("s1-note").textContent = "本地运行 · 元数据存成 Markdown";
+        show($("s1-note"), span(t, 1.7, 0.6));
+
+        // 2. the three columns
+        const in2 = span(t, 3.24, 0.3);
+        const out2 = span(t, 9.9, 0.18);
+        show($("s2"), in2 * (1 - out2), 0, 30 * (1 - in2) - 40 * out2);
+        $("s2-title").textContent = "三个栏位，一个文件夹";
+        $("s2-title").style.opacity = String(span(t, 3.8, 0.6));
+        const card2 = span(t, 3.6, 0.9);
+        const push = span(t, 8.6, 1.4, inOut);
+        show($("s2-card"), card2, 0, 26 * (1 - card2), 0.955 + 0.045 * card2 + 0.05 * push);
+        const captions = [
+          ["s2-cap-a", "文件夹就是结构", 4.5],
+          ["s2-cap-b", "缩略图墙，按画面铺开", 4.9],
+          ["s2-cap-c", "标签、评分、备注", 5.3],
+        ];
+        for (const [id, text, at] of captions) {
+          $(id).textContent = text;
+          show($(id), span(t, at, 0.5), 0, 8 * (1 - span(t, at, 0.6)));
+        }
+        for (const [id, at] of [["s2-rule-a", 4.5], ["s2-rule-b", 4.9]]) {
+          $(id).style.transform = `scaleY(${span(t, at, 0.45)})`;
+          $(id).style.opacity = String(span(t, at, 0.3) * (1 - span(t, 9.4, 0.4)));
+        }
+        for (const id of ["s2-cap-a", "s2-cap-b", "s2-cap-c"]) {
+          $(id).style.opacity = String(span(t, 4.5, 0.3) * (1 - span(t, 9.3, 0.4)));
+        }
+
+        // 3. search
+        const in3 = span(t, 9.74, 0.3);
+        const out3 = span(t, 16.3, 0.18);
+        show($("s3"), in3 * (1 - out3), 0, 24 * (1 - in3) - 30 * out3);
+        const card3 = span(t, 9.85, 0.9);
+        show($("s3-card"), card3, 0, 0, 1.02 - 0.02 * card3);
+        // Zoomed to the search field and the first row of results.
+        const z = 1 + 0.06 * span(t, 11.2, 3.6, inOut);
+        $("s3-img").style.transform = `scale(${z})`;
+        $("s3-img").style.transformOrigin = "50% 0%";
+        $("s3-label").textContent = "按画面内容搜索";
+        show($("s3-label"), span(t, 11.0, 0.5));
+        type($("s3-query"), "「蓝天下的白裙」", t, 11.4, 0.075, true);
+        show($("s3-query"), span(t, 11.2, 0.35));
+        $("s3-note").textContent = "本机模型 · 不上传";
+        show($("s3-note"), span(t, 12.6, 0.6));
+
+        // 4. metadata
+        const in4 = span(t, 16.14, 0.3);
+        const out4 = span(t, 21.42, 0.18);
+        show($("s4"), in4 * (1 - out4), 0, 26 * (1 - in4) - 30 * out4);
+        $("s4-head").textContent = "元数据跟着文件走";
+        show($("s4-head"), span(t, 16.7, 0.6), 0, 16 * (1 - span(t, 16.7, 0.7)));
+        $("s4-body").textContent = "标签、评分、备注写进这个文件夹里的 Markdown。换一台机器，打开同一个文件夹，它们还在。";
+        show($("s4-body"), span(t, 17.1, 0.6), 0, 14 * (1 - span(t, 17.1, 0.7)));
+        $("s4-path").textContent = ".deja/meta/插画/场景/巨树村.jpg.md";
+        show($("s4-path"), span(t, 17.8, 0.5), 0, 10 * (1 - span(t, 17.8, 0.6)));
+        const card4 = span(t, 16.5, 0.9);
+        show($("s4-card"), card4, 0, 24 * (1 - card4), 1 + 0.03 * span(t, 17.4, 3));
+        // The inspector is the last 600 of the wall shot's 2880 pixels; the card
+        // shows its lower half, where tags, rating and the note live.
+        const scale4 = 1.2;
+        $("s4-img").style.width = `${2880 * scale4}px`;
+        $("s4-img").style.height = `${1800 * scale4}px`;
+        $("s4-img").style.left = `${-2280 * scale4}px`;
+        $("s4-img").style.top = `${-1010 * scale4}px`;
+
+        // 5. viewer
+        const in5 = span(t, 21.14, 0.3);
+        const out5 = span(t, 24.72, 0.18);
+        show($("s5"), in5 * (1 - out5), 0, 26 * (1 - in5) - 30 * out5);
+        const card5 = span(t, 21.3, 0.9);
+        show($("s5-card"), card5, 0, 0, 1.03 - 0.03 * card5 + 0.02 * span(t, 22.2, 2.4, inOut));
+        $("s5-cap").textContent = "双击一张，整屏看；方向键翻图";
+        show($("s5-cap"), span(t, 21.9, 0.6), 0, 8 * (1 - span(t, 21.9, 0.7)));
+
+        // 6. end card
+        const in6 = span(t, 24.54, 0.3);
+        show($("s6"), in6, 0, 24 * (1 - in6));
+        $("s6-title").textContent = "Déjà";
+        $("s6-title").style.opacity = String(span(t, 24.8, 0.7));
+        $("s6-title").style.transform = `translateY(${20 * (1 - span(t, 24.8, 0.9))}px)`;
+        $("s6-rule").style.transform = `scaleX(${span(t, 25.4, 0.7, inOut)})`;
+        $("s6-line").textContent = "把散落在一个文件夹里的图，变成一间查得到的库。";
+        show($("s6-line"), span(t, 25.5, 0.7), 0, 14 * (1 - span(t, 25.5, 0.8)));
+        $("s6-meta").textContent = "macOS · 本地运行 · 没有账号";
+        show($("s6-meta"), span(t, 26.2, 0.7));
+
+        // The small mark keeps the scenes on one sheet.
+        show($("mark"), span(t, 3.4, 0.6) * (1 - span(t, 24.4, 0.5)));
+      }
+
+      window.__duration = DURATION;
+      window.__render = render;
+      document.fonts.ready.then(() => {
+        window.__fontsReady = true;
+        render(0);
+      });
+      render(0);
+    </script>
+  </body>
+</html>
