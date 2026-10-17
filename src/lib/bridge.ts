@@ -1,5 +1,5 @@
-import type { AppSettings } from "./settings";
 import type {
+  AppSettings,
   Entry,
   EntryMeta,
   Filter,
@@ -8,6 +8,7 @@ import type {
   IndexProgress,
   SearchResponse,
   SimilarResponse,
+  Sort,
   VaultView,
 } from "./types";
 
@@ -38,8 +39,7 @@ async function call<T>(name: string, args: unknown = {}): Promise<T> {
 
 export const api = {
   openVault: (path: string) => call<VaultView>("open_vault", { path }),
-  recent: () => call<{ recent: string[] }>("recent"),
-  search: (query: string, filter: Filter, sort: string, semantic: boolean) =>
+  search: (query: string, filter: Filter, sort: Sort, semantic: boolean) =>
     call<SearchResponse>("search", {
       query,
       filter,
@@ -56,7 +56,6 @@ export const api = {
   settings: () => call<AppSettings>("settings"),
   saveSettings: (settings: AppSettings) => call<AppSettings>("save_settings", { settings }),
   warmModel: () => call<{ ready: boolean; warmMs: number }>("warm_model"),
-  modelStatus: () => call<{ ready: boolean; sidecar: string | null }>("model_status"),
   similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
   entry: (relPath: string) => call<Entry>("entry", { relPath }),
   reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),

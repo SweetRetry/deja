@@ -33,6 +33,15 @@ export type VaultView = {
   model: { ready: boolean };
 };
 
+/** What the backend acts on: the model process and the folder scan. It lives
+ *  in settings.json under the app's data dir (settings.rs). */
+export type AppSettings = { semantic: boolean; modelIdleSecs: number; ignored: string[] };
+
+export type Sort = "name" | "modified" | "size" | "rating";
+
+/** How a query is ranked: by picture content, or by names, tags and notes only. */
+export type Ranking = "semantic" | "keyword";
+
 export type Filter = {
   kinds: string[];
   minWidth: number;
