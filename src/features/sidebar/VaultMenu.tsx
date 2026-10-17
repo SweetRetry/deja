@@ -1,7 +1,12 @@
 import { useRef, useState } from "react";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/components/ui/menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { editScope } from "@/features/scope/commands";
 import { PathForm, pickFolder } from "@/features/vault/OpenFolder";
 
@@ -14,8 +19,8 @@ export function VaultMenu({ root }: { root: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Menu>
-        <MenuTrigger
+      <DropdownMenu>
+        <DropdownMenuTrigger
           render={
             <Button
               variant="ghost"
@@ -27,10 +32,10 @@ export function VaultMenu({ root }: { root: string }) {
         >
           <span className="truncate">{name}</span>
           <CaretUpDownIcon aria-hidden className="text-muted-foreground" />
-        </MenuTrigger>
-        <MenuContent className="w-(--anchor-width)" finalFocus={() => !typing.current}>
-          <MenuItem onClick={() => editScope()}>选择索引范围…</MenuItem>
-          <MenuItem
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-(--anchor-width)" finalFocus={() => !typing.current}>
+          <DropdownMenuItem onClick={() => editScope()}>选择索引范围…</DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => {
               if (pickFolder()) return;
               typing.current = true;
@@ -38,9 +43,9 @@ export function VaultMenu({ root }: { root: string }) {
             }}
           >
             打开其他文件夹…
-          </MenuItem>
-        </MenuContent>
-      </Menu>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {manual ? (
         <PathForm
           onDone={() => {
