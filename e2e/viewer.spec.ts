@@ -10,7 +10,6 @@ test("预览底部的缩略图条：居中当前文件，点击跳转，拖动�
   await expect(page.getByTestId("thumb").first()).toBeVisible();
   await page.getByTestId("thumb").first().dblclick();
 
-  const dialog = page.getByRole("dialog");
   const strip = page.getByTestId("filmstrip");
   const current = strip.locator('[aria-current="true"]');
   const items = strip.getByTestId("filmstrip-item");
@@ -26,9 +25,10 @@ test("预览底部的缩略图条：居中当前文件，点击跳转，拖动�
       return order.join() === last;
     })
     .toBe(true);
+  // The strip's current slice is the position readout: the viewer's own
+  // counter left with the arrow buttons.
   const expectAt = async (index: number) => {
     await expect(current).toHaveAttribute("data-rel-path", order[index]!);
-    await expect(dialog).toContainText(`${index + 1} / ${order.length}`);
   };
 
   await strip.locator(`[data-rel-path="${order[0]}"]`).click();

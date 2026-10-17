@@ -110,7 +110,6 @@ export function DropImport() {
     >
       <DownloadSimpleIcon aria-hidden className="size-8 text-muted-foreground" />
       <p className="text-sm font-medium">松开以导入到「{target}」</p>
-      <p className="text-xs text-muted-foreground">原文件复制进此文件夹，网页图片会记下来源网址</p>
     </div>
   );
 }

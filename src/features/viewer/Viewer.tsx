@@ -128,6 +128,12 @@ function ViewerContent() {
         </div>
         {index >= 0 && entries.length > 1 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="shrink-0 px-6 pb-4">
+            {/* The strip is the only place position is shown, so the count sits
+                with it rather than beside the title, where a long name would
+                run into it. */}
+            <div className="mb-1 text-center text-xs text-muted-foreground tabular-nums">
+              {index + 1} / {entries.length}
+            </div>
             <Filmstrip entries={entries} index={index} />
           </motion.div>
         ) : null}
