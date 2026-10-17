@@ -1,0 +1,80 @@
+import type { AppSettings } from "./settings";
+import type {
+  Entry,
+  EntryMeta,
+  Filter,
+  ImportItem,
+  ImportResponse,
+  IndexProgress,
+  SearchResponse,
+  SimilarResponse,
+  VaultView,
+} from "./types";
+
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { COLOR_PRESETS } from "./types";
+
+export const inTauri =
+  typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
+
+async function call<T>(name: string, args: unknown = {}): Promise<T> {
+  if (inTauri) {
+    return invoke<T>("command", { name, args });
+  }
+  const response = await fetch(`/api/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  if (!response.ok) {
+    throw new Error(`${name} failed with ${response.status}`);
+  }
+  const payload = (await response.json()) as { ok: boolean; data?: T; error?: string };
+  if (!payload.ok) {
+    throw new Error(payload.error ?? `${name} failed`);
+  }
+  return payload.data as T;
+}
+
+export const api = {
+  openVault: (path: string) => call<VaultView>("open_vault", { path }),
+  recent: () => call<{ recent: string[] }>("recent"),
+  search: (query: string, filter: Filter, sort: string, semantic: boolean) =>
+    call<SearchResponse>("search", {
+      query,
+      filter,
+      sort,
+      semantic,
+      countColors: COLOR_PRESETS.map((preset) => preset.hex),
+    }),
+  saveMeta: (relPath: string, meta: EntryMeta) => call<Entry>("save_meta", { relPath, meta }),
+  indexSlice: (batch: number) => call<IndexProgress>("index_slice", { batch }),
+  refresh: () => call<VaultView>("refresh"),
+  importItems: (folder: string, items: ImportItem[]) => call<ImportResponse>("import", { folder, items }),
+  takeDirty: () => call<{ dirty: boolean }>("take_dirty"),
+  settings: () => call<AppSettings>("settings"),
+  saveSettings: (settings: AppSettings) => call<AppSettings>("save_settings", { settings }),
+  warmModel: () => call<{ ready: boolean; warmMs: number }>("warm_model"),
+  modelStatus: () => call<{ ready: boolean; sidecar: string | null }>("model_status"),
+  similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
+  entry: (relPath: string) => call<Entry>("entry", { relPath }),
+  reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),
+  selfcheck: () =>
+    call<{ enabled: boolean; vault: string | null; out: string | null }>("selfcheck_requested"),
+  selfcheckReport: (report: unknown) => call<{ written: string }>("selfcheck_report", { report }),
+};
+
+/** A thumbnail is a cache file in the app's data dir; the browser build has no
+ *  file access, so it reads the demo vault from the web root instead. */
+export function thumbUrl(entry: Entry): string {
+  if (!inTauri) {
+    return `/vault/${entry.relPath.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  return entry.thumbPath ? convertFileSrc(entry.thumbPath) : "";
+}
+
+/** The original file, for the viewer and for video playback. */
+export function fileUrl(root: string, entry: Entry): string {
+  const absolute = `${root}/${entry.relPath}`;
+  return inTauri ? convertFileSrc(absolute) : `/vault/${entry.relPath.split("/").map(encodeURIComponent).join("/")}`;
+}

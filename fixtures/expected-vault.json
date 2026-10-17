@@ -1,0 +1,169 @@
+{
+  "vault": "public/vault",
+  "source": "/Users/zhangzimin/Documents/aquavo/olio/assets/pinterest-home-50",
+  "folders": [
+    "",
+    "UI参考",
+    "UI参考/登录页",
+    "摄影",
+    "摄影/人像",
+    "摄影/风景",
+    "海报"
+  ],
+  "entries": [
+    {
+      "relPath": "UI参考/渐变按钮-04.jpg",
+      "name": "渐变按钮-04.jpg",
+      "ext": "jpg",
+      "sizeBytes": 79009,
+      "width": 735,
+      "height": 985,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "UI参考/登录页/深色登录-dribbble.jpg",
+      "name": "深色登录-dribbble.jpg",
+      "ext": "jpg",
+      "sizeBytes": 175692,
+      "width": 1080,
+      "height": 1920,
+      "tags": [
+        "深色",
+        "登录",
+        "参考"
+      ],
+      "rating": 4,
+      "note": "深色底加细边框输入框，间距可以照这个来。",
+      "source": "https://dribbble.com/shots/1234567"
+    },
+    {
+      "relPath": "UI参考/登录页/渐变按钮-03.jpg",
+      "name": "渐变按钮-03.jpg",
+      "ext": "jpg",
+      "sizeBytes": 206085,
+      "width": 816,
+      "height": 1451,
+      "tags": [
+        "渐变",
+        "按钮"
+      ],
+      "rating": 3,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "乱码名-A7f3.jpg",
+      "name": "乱码名-A7f3.jpg",
+      "ext": "jpg",
+      "sizeBytes": 194722,
+      "width": 736,
+      "height": 1308,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "摄影/人像/逆光-03.jpg",
+      "name": "逆光-03.jpg",
+      "ext": "jpg",
+      "sizeBytes": 187655,
+      "width": 1358,
+      "height": 2037,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "摄影/人像/黄昏逆光-01.jpg",
+      "name": "黄昏逆光-01.jpg",
+      "ext": "jpg",
+      "sizeBytes": 101584,
+      "width": 736,
+      "height": 977,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "摄影/人像/黄昏逆光-02.jpg",
+      "name": "黄昏逆光-02.jpg",
+      "ext": "jpg",
+      "sizeBytes": 101584,
+      "width": 736,
+      "height": 977,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "摄影/风景/极简-墙面.jpg",
+      "name": "极简-墙面.jpg",
+      "ext": "jpg",
+      "sizeBytes": 109988,
+      "width": 843,
+      "height": 1416,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "摄影/风景/海边-dusk.jpg",
+      "name": "海边-dusk.jpg",
+      "ext": "jpg",
+      "sizeBytes": 156854,
+      "width": 1080,
+      "height": 1080,
+      "tags": [
+        "黄昏",
+        "海"
+      ],
+      "rating": 5,
+      "note": "逆光下的海岸线，适合做封面。",
+      "source": null
+    },
+    {
+      "relPath": "海报/和风-02.jpg",
+      "name": "和风-02.jpg",
+      "ext": "jpg",
+      "sizeBytes": 267009,
+      "width": 1230,
+      "height": 2048,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "海报/日式极简包装.jpg",
+      "name": "日式极简包装.jpg",
+      "ext": "jpg",
+      "sizeBytes": 183310,
+      "width": 768,
+      "height": 1280,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    },
+    {
+      "relPath": "海报/深色海报.jpg",
+      "name": "深色海报.jpg",
+      "ext": "jpg",
+      "sizeBytes": 160806,
+      "width": 676,
+      "height": 1200,
+      "tags": [],
+      "rating": 0,
+      "note": "",
+      "source": null
+    }
+  ]
+}

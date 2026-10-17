@@ -1,0 +1,112 @@
+export type ColorShare = { hex: string; share: number };
+
+export type EntryMeta = {
+  tags: string[];
+  rating: number;
+  note: string;
+  source: string | null;
+};
+
+export type Entry = EntryMeta & {
+  relPath: string;
+  name: string;
+  ext: string;
+  kind: "image" | "video";
+  sizeBytes: number;
+  modified: number;
+  width: number | null;
+  height: number | null;
+  colors: ColorShare[];
+  dhash: string;
+  thumbPath: string | null;
+  indexed: boolean;
+  embedded: boolean;
+};
+
+export type VaultView = {
+  root: string;
+  folders: string[];
+  entries: Entry[];
+  indexed: number;
+  embedded: number;
+  total: number;
+  model: { ready: boolean };
+};
+
+export type Filter = {
+  kinds: string[];
+  minWidth: number;
+  minRating: number;
+  color: string;
+  folder: string;
+  tag: string;
+};
+
+/** Position in the result list, and the text→image match (0–100) when the model scored it. */
+export type SearchScore = { rank: number; match: number | null };
+
+export type SearchResponse = {
+  entries: Entry[];
+  scores: Record<string, SearchScore>;
+  /** Files each COLOR_PRESETS swatch would leave, given the other filters. */
+  colorCounts: number[];
+  semantic: boolean;
+  warmMs: number;
+  tookMs: number;
+};
+
+export type IndexProgress = {
+  indexed: number;
+  embedded: number;
+  total: number;
+  remaining: number;
+  derived: number;
+  embeddedNow: number;
+  modelReady: boolean;
+  modelError: string | null;
+  phase: string;
+};
+
+export type SimilarRow = {
+  relPath: string;
+  score: number;
+  hashScore: number;
+  vectorScore: number;
+};
+
+export type SimilarResponse = { results: SimilarRow[] };
+
+/** One dropped item: a `data:` URL for bytes the page read, or the image's web address. */
+export type ImportItem = { url: string; name: string | null; source: string | null };
+
+export type ImportResponse = { imported: string[]; view: VaultView };
+
+export const emptyFilter: Filter = {
+  kinds: [],
+  minWidth: 0,
+  minRating: 0,
+  color: "",
+  folder: "",
+  tag: "",
+};
+
+/**
+ * Built in OKLCH: three neutrals by lightness, brown (a dark orange), and eight
+ * hues 45° apart. The backend matches a chromatic swatch within 25° of hue, so
+ * neighbours barely overlap and every hue lands on some swatch
+ * (color::palette_matches).
+ */
+export const COLOR_PRESETS: { hex: string; label: string }[] = [
+  { hex: "#1b1b1b", label: "黑" },
+  { hex: "#717171", label: "灰" },
+  { hex: "#e8e8e8", label: "白" },
+  { hex: "#774826", label: "棕" },
+  { hex: "#d33b36", label: "红" },
+  { hex: "#e87f25", label: "橙" },
+  { hex: "#f0cf4c", label: "黄" },
+  { hex: "#4f9b3e", label: "绿" },
+  { hex: "#2bb3b9", label: "青" },
+  { hex: "#3065be", label: "蓝" },
+  { hex: "#7d4dad", label: "紫" },
+  { hex: "#e694bb", label: "粉" },
+];

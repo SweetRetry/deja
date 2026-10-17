@@ -1,0 +1,10 @@
+# Runtime pin for sidecar/.venv (Python 3.12, macOS arm64).
+# transformers 5.20.1 is the first released line that knows the
+# `embedding_gemma2` architecture; 5.5.x rejects it. No git install needed.
+torch==2.14.1
+torchvision==0.29.1
+transformers==5.20.1
+tokenizers==0.23.3
+pillow==13.0.0
+safetensors==0.8.0
+numpy==2.5.4

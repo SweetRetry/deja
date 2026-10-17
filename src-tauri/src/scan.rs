@@ -1,0 +1,85 @@
+use crate::{IMAGE_EXTS, VIDEO_EXTS};
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Debug)]
+pub struct RawFile {
+  pub rel_path: String,
+  pub name: String,
+  pub ext: String,
+  pub kind: String,
+  pub size_bytes: u64,
+  pub modified: i64,
+  pub abs: PathBuf,
+}
+
+const IGNORED_DIRS: &[&str] = &["node_modules", "target", "Library", "System"];
+
+fn keep(ext: &str) -> Option<&'static str> {
+  if IMAGE_EXTS.contains(&ext) {
+    Some("image")
+  } else if VIDEO_EXTS.contains(&ext) {
+    Some("video")
+  } else {
+    None
+  }
+}
+
+fn modified_ms(path: &Path) -> i64 {
+  std::fs::metadata(path)
+    .and_then(|m| m.modified())
+    .ok()
+    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+    .map(|d| d.as_millis() as i64)
+    .unwrap_or(0)
+}
+
+/// `ignored` adds folder names the user chose to skip to the built-in list.
+pub fn walk(root: &Path, ignored: &[String]) -> Vec<RawFile> {
+  let mut files = Vec::new();
+  let mut stack = vec![root.to_path_buf()];
+  while let Some(dir) = stack.pop() {
+    let entries = match std::fs::read_dir(&dir) {
+      Ok(entries) => entries,
+      Err(_) => continue,
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      let name = entry.file_name().to_string_lossy().to_string();
+      if name.starts_with('.') || IGNORED_DIRS.contains(&name.as_str()) || ignored.contains(&name) {
+        continue;
+      }
+      let file_type = match entry.file_type() {
+        Ok(t) => t,
+        Err(_) => continue,
+      };
+      if file_type.is_symlink() {
+        continue;
+      }
+      if file_type.is_dir() {
+        stack.push(path);
+        continue;
+      }
+      let ext = name
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+      let Some(kind) = keep(&ext) else { continue };
+      let rel_path = path
+        .strip_prefix(root)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| name.clone());
+      let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+      files.push(RawFile {
+        rel_path,
+        name,
+        ext,
+        kind: kind.to_string(),
+        size_bytes,
+        modified: modified_ms(&path),
+        abs: path,
+      });
+    }
+  }
+  files.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+  files
+}
