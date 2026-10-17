@@ -1,0 +1,94 @@
+#!/bin/sh
+#
+# Rejects a commit message that is not Conventional Commits, or not English.
+#
+# Turned on by `git config core.hooksPath .githooks`, which the prepare script in
+# package.json sets on install. Check a message by hand, or check the hook
+# itself, with:
+#
+#   git config core.hooksPath .githooks
+#   sh .githooks/commit-msg.test.sh
+#
+# English is enforced as ASCII, so CJK, curly quotes, and typographic dashes fail
+# on the byte rather than on a guess about the words.
+
+set -eu
+LC_ALL=C
+export LC_ALL
+
+HEADER_MAX=72
+BODY_MAX=100
+TYPES='build chore ci docs feat fix perf refactor revert style test'
+
+msg_file=${1:-}
+if [ -z "$msg_file" ]; then
+  echo 'commit-msg: no message file was passed' >&2
+  exit 1
+fi
+
+usage() {
+  printf 'commit-msg: %s\n\n' "$1" >&2
+  printf 'Expected: type(scope): description\n' >&2
+  printf '  type    one of %s\n' "$TYPES" >&2
+  printf '  scope   optional and lower case, as in feat(import):\n' >&2
+  printf '  header  at most %s characters, no trailing period, plain ASCII\n' "$HEADER_MAX" >&2
+  printf '  body    one blank line after the header, %s characters per line\n' "$BODY_MAX" >&2
+  exit 1
+}
+
+# git strips comment lines and blank padding itself, unless commit.cleanup says
+# otherwise. Strip both here as well, so every check sees the same input.
+clean=$(mktemp)
+trap 'rm -f "$clean"' EXIT
+awk '
+  /^#/ { next }
+  { line[++n] = $0 }
+  END {
+    first = 0; last = 0
+    for (i = 1; i <= n; i++) if (line[i] ~ /[^[:space:]]/) { if (!first) first = i; last = i }
+    for (i = first; i <= last; i++) print line[i]
+  }
+' "$msg_file" >"$clean"
+
+header=$(sed -n '1p' "$clean")
+
+# git writes these itself, and it does not follow the convention.
+case "$header" in
+  'Merge '* | 'Revert '* | 'fixup! '* | 'squash! '* | 'amend! '*) exit 0 ;;
+esac
+
+[ -n "$header" ] || usage 'the message is empty'
+
+line=$(grep -n '[^[:print:][:space:]]' "$clean" | head -1 || true)
+if [ -n "$line" ]; then
+  usage "line ${line%%:*} holds characters that are not English, and only ASCII counts"
+fi
+
+pattern=$(printf '%s' "$TYPES" | tr ' ' '|')
+if ! printf '%s\n' "$header" | grep -Eq "^($pattern)(\([a-z0-9._/-]+\))?!?: .+$"; then
+  usage 'the header is not type(scope): description'
+fi
+
+description=${header#*: }
+case "$description" in
+  [A-Z]*) usage "start the description in lower case, not '${description%% *}'" ;;
+esac
+case "$header" in
+  *.) usage 'the header ends with a period' ;;
+esac
+
+length=$(printf '%s\n' "$header" | awk 'NR == 1 { print length($0) }')
+[ "$length" -le "$HEADER_MAX" ] || usage "the header is $length characters, the limit is $HEADER_MAX"
+
+if [ "$(awk 'END { print NR }' "$clean")" -gt 1 ]; then
+  [ -z "$(sed -n '2p' "$clean")" ] || usage 'a blank line goes between the header and the body'
+  [ -n "$(sed -n '3p' "$clean")" ] || usage 'the body has more than one blank line after the header'
+fi
+
+long=$(awk -v max="$BODY_MAX" 'NR > 1 && length($0) > max { printf "%s%d (%d)", sep, NR, length($0); sep = ", " }' "$clean")
+[ -z "$long" ] || usage "these lines pass $BODY_MAX characters: $long"
+
+trail=$(grep -n '[[:blank:]]$' "$clean" | head -1 || true)
+[ -z "$trail" ] || usage "line ${trail%%:*} ends with whitespace"
+
+exit 0
