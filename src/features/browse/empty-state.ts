@@ -1,34 +1,21 @@
-// Why the wall has nothing to show, and the one verb that brings results back.
+// Why an open folder's wall has nothing to show, and the one verb that brings
+// results back. With no folder open the welcome table stands in instead.
 // Pure so the wording can be asserted without rendering.
-import { humanError } from "../../lib/errors.ts";
 import type { Filter } from "../../lib/types.ts";
 import { colorName, narrowing } from "./filter.ts";
 
-export type EmptyAction = "open" | "clear-search" | "clear-filters" | "clear-both";
+export type EmptyAction = "clear-search" | "clear-filters" | "clear-both";
 
 export type EmptyState = { title: string; body: string; action: EmptyAction | null };
 
 export type EmptyInput = {
-  /** A folder is open. */
-  open: boolean;
-  /** Why the last open failed, as the backend worded it. */
-  error: string | null;
   query: string;
   filter: Filter;
   /** Files in the scoped folder before any search or filter. */
   folderTotal: number;
 };
 
-export function emptyState({ open, error, query, filter, folderTotal }: EmptyInput): EmptyState {
-  if (!open) {
-    if (error) return { title: "打不开这个文件夹", body: humanError(error), action: "open" };
-    return {
-      title: "尚未打开素材文件夹",
-      body: "文件保留在原位置，其中的图片与视频可按画面内容搜索。",
-      action: "open",
-    };
-  }
-
+export function emptyState({ query, filter, folderTotal }: EmptyInput): EmptyState {
   const text = query.trim();
   const { kind, rating, color, width } = narrowing(filter);
   const others = rating > 0 || width > 0;

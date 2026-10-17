@@ -40,13 +40,12 @@ export function AppSidebar() {
         <SidebarContent />
       )}
 
-      {/* Settings stay reachable before a folder is open: the theme is chosen first. */}
+      {/* Before a folder is open the welcome table carries the settings, so
+          there is one settings button, and one ⌘, binding, at a time. */}
       <SidebarFooter className="gap-1 px-4 pb-3">
         <div className="flex h-8 items-center gap-2 text-xs text-muted-foreground">
           <IndexStatus />
-          <div className="ml-auto">
-            <SettingsDialog />
-          </div>
+          <div className="ml-auto">{path ? <SettingsDialog /> : null}</div>
         </div>
         <IndexNotice />
       </SidebarFooter>

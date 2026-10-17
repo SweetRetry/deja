@@ -3,27 +3,7 @@ import { test } from "node:test";
 import { emptyFilter } from "../../lib/types.ts";
 import { emptyState, type EmptyInput } from "./empty-state.ts";
 
-const base: EmptyInput = { open: true, error: null, query: "", filter: emptyFilter, folderTotal: 12 };
-
-test("no folder open names the space and offers to open one", () => {
-  assert.deepEqual(emptyState({ ...base, open: false }), {
-    title: "尚未打开素材文件夹",
-    body: "文件保留在原位置，其中的图片与视频可按画面内容搜索。",
-    action: "open",
-  });
-});
-
-test("a failed open says why and offers to try again", () => {
-  assert.deepEqual(emptyState({ ...base, open: false, error: "/tmp/a.png is not a folder" }), {
-    title: "打不开这个文件夹",
-    body: "所选路径不是文件夹，请选择一个文件夹。",
-    action: "open",
-  });
-});
-
-test("an open folder ignores a stale open error", () => {
-  assert.equal(emptyState({ ...base, error: "boom", folderTotal: 0 }).title, "此文件夹中没有图片或视频");
-});
+const base: EmptyInput = { query: "", filter: emptyFilter, folderTotal: 12 };
 
 test("an empty folder offers nothing to clear", () => {
   assert.deepEqual(emptyState({ ...base, folderTotal: 0 }), {

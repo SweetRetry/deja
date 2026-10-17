@@ -34,6 +34,10 @@
   --shadow-lg: 0 0 #0000;
   --shadow-xl: 0 0 #0000;
   --shadow-2xl: 0 0 #0000;
+
+  /* The one exception, the welcome table's prints: see design/welcome.md. */
+  --shadow-print: 0 1px 1px oklch(0 0 0 / 0.35), 0 6px 16px oklch(0 0 0 / 0.28);
+  --shadow-print-lifted: 0 1px 1px oklch(0 0 0 / 0.35), 0 28px 52px oklch(0 0 0 / 0.42);
 }
 
 :root {
@@ -80,6 +84,9 @@
   --chart-3: oklch(0.619 0.127 77.0);
   --chart-4: oklch(0.559 0.192 301.5);
   --chart-5: oklch(0.648 0.007 286.2);
+  /* Photo paper and the caption written on it: the same in both themes. */
+  --paper: oklch(0.950 0.008 85.0);
+  --ink: oklch(0.380 0.010 60.0);
 }
 
 .dark {
@@ -128,6 +135,9 @@
   --chart-3: oklch(0.758 0.140 76.7);
   --chart-4: oklch(0.735 0.165 307.3);
   --chart-5: oklch(0.648 0.007 286.2);
+  /* Photo paper and the caption written on it: the same in both themes. */
+  --paper: oklch(0.950 0.008 85.0);
+  --ink: oklch(0.380 0.010 60.0);
 }
 
 @theme inline {
@@ -173,6 +183,8 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
