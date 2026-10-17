@@ -7,7 +7,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager};
 
-const TRAY: &str = "shelf";
+const TRAY: &str = "deja";
 const SHOW: &str = "show";
 const QUIT: &str = "quit";
 const RECENT: &str = "recent:";
@@ -21,7 +21,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
   tauri::tray::TrayIconBuilder::with_id(TRAY)
     .icon(glyph())
     .icon_as_template(true)
-    .tooltip("Shelf")
+    .tooltip("Déjà")
     .menu(&menu(app)?)
     .show_menu_on_left_click(true)
     .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
@@ -75,10 +75,10 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
   Menu::with_items(
     app,
     &[
-      &MenuItem::with_id(app, SHOW, "显示 Shelf", true, None::<&str>)?,
+      &MenuItem::with_id(app, SHOW, "显示 Déjà", true, None::<&str>)?,
       &recent,
       &PredefinedMenuItem::separator(app)?,
-      &MenuItem::with_id(app, QUIT, "退出 Shelf", true, None::<&str>)?,
+      &MenuItem::with_id(app, QUIT, "退出 Déjà", true, None::<&str>)?,
     ],
   )
 }
@@ -92,19 +92,10 @@ fn short_path(path: &str, home: &str) -> String {
   }
 }
 
-/// The app mark, a wide slab, drawn as a template so macOS tints it for the
-/// light and dark menu bar. 36px is the 18pt menu bar slot at 2x.
+/// The app mark, drawn by scripts/make-icons.mjs as a template so macOS tints it
+/// for the light and dark menu bar. 36px is the 18pt menu bar slot at 2x.
 fn glyph() -> Image<'static> {
-  const SIZE: u32 = 36;
-  let (left, right, top, bottom) = (6, 30, 11, 25);
-  let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
-  for y in top..bottom {
-    for x in left..right {
-      let corner = (x == left || x == right - 1) && (y == top || y == bottom - 1);
-      rgba[((y * SIZE + x) * 4 + 3) as usize] = if corner { 0x80 } else { 0xff };
-    }
-  }
-  Image::new_owned(rgba, SIZE, SIZE)
+  Image::from_bytes(include_bytes!("../icons/tray.png")).expect("tray.png is a valid PNG")
 }
 
 #[cfg(test)]

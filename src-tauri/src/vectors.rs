@@ -169,7 +169,7 @@ mod tests {
       .duration_since(std::time::UNIX_EPOCH)
       .expect("clock")
       .as_nanos();
-    std::env::temp_dir().join(format!("shelf-vec-{name}-{}-{stamp}.db", std::process::id()))
+    std::env::temp_dir().join(format!("deja-vec-{name}-{}-{stamp}.db", std::process::id()))
   }
 
   fn axis(index: usize) -> Vec<f32> {

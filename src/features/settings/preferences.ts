@@ -26,7 +26,7 @@ export const THUMB_WIDTH: Record<ThumbSize, number> = { small: 120, medium: 168,
 
 export const INSPECTOR = { min: 280, max: 480, initial: 320 };
 
-const KEY = "shelf.view";
+const KEY = "deja.view";
 const DEFAULTS: Preferences = {
   theme: "dark",
   layout: "masonry",

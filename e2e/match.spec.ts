@@ -23,7 +23,7 @@ test("最低匹配度：低于阈值的结果置暗，切到隐藏后不再出�
   test.setTimeout(240_000);
   // Start from the default preferences once; the reload below must keep what was set.
   await page.goto("/");
-  await page.evaluate(() => localStorage.removeItem("shelf.view"));
+  await page.evaluate(() => localStorage.removeItem("deja.view"));
   await page.reload();
   await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
   await page.getByLabel("文件夹路径").fill("public/vault");

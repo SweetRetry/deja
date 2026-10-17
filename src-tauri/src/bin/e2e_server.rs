@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 fn main() {
-  let port: u16 = std::env::var("SHELF_E2E_PORT")
+  let port: u16 = std::env::var("DEJA_E2E_PORT")
     .ok()
     .and_then(|value| value.parse().ok())
     .unwrap_or(5177);
@@ -52,7 +52,7 @@ fn handle(mut stream: TcpStream) {
     } else {
       serde_json::from_slice(&body).unwrap_or(json!({}))
     };
-    match shelf_lib::dispatch(&name, &args) {
+    match deja_lib::dispatch(&name, &args) {
       Ok(data) => json!({ "ok": true, "data": data }),
       Err(error) => json!({ "ok": false, "error": error }),
     }

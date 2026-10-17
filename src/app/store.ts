@@ -6,8 +6,8 @@ import { initialSession, reduce, type Session } from "./session";
 
 export type { Session };
 
-export const SORT_KEY = "shelf.sort";
-export const RANKING_KEY = "shelf.ranking";
+export const SORT_KEY = "deja.sort";
+export const RANKING_KEY = "deja.ranking";
 
 const SORTS: Sort[] = ["name", "modified", "size", "rating"];
 

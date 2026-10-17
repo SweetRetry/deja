@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Shelf needs the folder picker and window dragging from the overlay title bar.",
+  "description": "Déjà needs the folder picker and window dragging from the overlay title bar.",
   "windows": [
     "main"
   ],

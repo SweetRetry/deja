@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const VAULT = "public/vault";
-const META_DIR = join(VAULT, ".shelf/meta");
+const META_DIR = join(VAULT, ".deja/meta");
 
 async function openVault(page: Page) {
   await page.goto("/");
@@ -101,7 +101,7 @@ test("筛选视频类型时显示空态", async ({ page }) => {
   await expect(page.getByTestId("thumb").first()).toBeVisible();
 });
 
-test("标签写进 .shelf/meta 并跨刷新保留", async ({ page }) => {
+test("标签写进 .deja/meta 并跨刷新保留", async ({ page }) => {
   await openVault(page);
   await selectImage(page, "摄影/人像/黄昏逆光-01.jpg");
   await page.getByLabel("添加标签").fill("逆光参考");

@@ -2,7 +2,7 @@ use crate::Meta;
 use std::path::{Path, PathBuf};
 
 pub fn meta_path(root: &Path, rel: &str) -> PathBuf {
-  root.join(".shelf").join("meta").join(format!("{rel}.md"))
+  root.join(".deja").join("meta").join(format!("{rel}.md"))
 }
 
 fn unquote(value: &str) -> String {

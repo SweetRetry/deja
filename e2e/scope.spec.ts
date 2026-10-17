@@ -3,14 +3,14 @@ import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// A scratch copy without .shelf/scope.json is a folder opened for the first
+// A scratch copy without .deja/scope.json is a folder opened for the first
 // time: nothing is indexed until the user picks which folders to index.
 let vault = "";
 
 test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "shelf-scope-"));
+  vault = mkdtempSync(join(tmpdir(), "deja-scope-"));
   cpSync("public/vault", vault, { recursive: true });
-  rmSync(join(vault, ".shelf/scope.json"));
+  rmSync(join(vault, ".deja/scope.json"));
 });
 
 test.afterEach(() => {
@@ -27,7 +27,7 @@ async function openFresh(page: Page) {
   return picker;
 }
 
-const scopeOnDisk = () => JSON.parse(readFileSync(join(vault, ".shelf/scope.json"), "utf8")) as { excluded: string[] };
+const scopeOnDisk = () => JSON.parse(readFileSync(join(vault, ".deja/scope.json"), "utf8")) as { excluded: string[] };
 
 test("首次打开先选索引范围：去掉「人像」后只索引其余 9 张，之后可从文件夹菜单改回", async ({ page }) => {
   const picker = await openFresh(page);

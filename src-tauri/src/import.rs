@@ -64,7 +64,7 @@ fn decode_data_url(url: &str) -> Result<Vec<u8>, String> {
 fn download(url: &str) -> Result<Vec<u8>, String> {
   let output = Command::new("curl")
     .args(["-fsSL", "--max-time", "30", "--max-filesize", "1073741824"])
-    .args(["-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Shelf"])
+    .args(["-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Deja"])
     .arg(url)
     .stdin(Stdio::null())
     .stderr(Stdio::null())
@@ -220,7 +220,7 @@ mod tests {
 
   #[test]
   fn writes_a_data_url_and_numbers_a_clash() {
-    let dir = std::env::temp_dir().join(format!("shelf-import-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("deja-import-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("参考")).unwrap();
     let png = base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nrest");

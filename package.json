@@ -1,5 +1,5 @@
 {
-  "name": "eagle-test",
+  "name": "deja",
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@12.5.1",
@@ -10,10 +10,11 @@
     "preview": "vite preview",
     "e2e": "npm run e2e:build && playwright test",
     "tauri": "tauri",
-    "e2e:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin shelf-e2e",
-    "e2e:api": "SHELF_DATA_DIR=.e2e-data src-tauri/target/debug/shelf-e2e",
+    "e2e:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin deja-e2e",
+    "e2e:api": "DEJA_DATA_DIR=.e2e-data src-tauri/target/debug/deja-e2e",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "fixtures": "node scripts/make-fixtures.mjs",
+    "icons": "node scripts/make-icons.mjs",
     "hooks": "git config core.hooksPath .githooks || true",
     "prepare": "npm run hooks",
     "test:unit": "node --test 'src/**/*.test.ts'"

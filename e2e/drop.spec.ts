@@ -9,7 +9,7 @@ import { join } from "node:path";
 let vault = "";
 
 test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "shelf-drop-"));
+  vault = mkdtempSync(join(tmpdir(), "deja-drop-"));
   cpSync("public/vault", vault, { recursive: true });
 });
 
@@ -64,7 +64,7 @@ test("悬停显示导入提示，松开后文件进入当前文件夹并被选�
   await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
   await expect(inspector(page)).toHaveAttribute("data-entry", "海报/拖进来的.jpg");
   expect(existsSync(join(vault, "海报/拖进来的.jpg"))).toBe(true);
-  expect(readFileSync(join(vault, ".shelf/meta/海报/拖进来的.jpg.md"), "utf8")).toContain(
+  expect(readFileSync(join(vault, ".deja/meta/海报/拖进来的.jpg.md"), "utf8")).toContain(
     "source: https://example.com/pic.jpg",
   );
 });
@@ -104,7 +104,7 @@ test("只带图片链接的拖放由后端下载，同名时编号", async ({ pa
   }, src);
   await expect(toast(page, "success")).toContainText("已导入 1 项");
   await expect(inspector(page)).toHaveAttribute("data-entry", "乱码名-A7f3 2.jpg");
-  expect(readFileSync(join(vault, ".shelf/meta/乱码名-A7f3 2.jpg.md"), "utf8")).toContain(`source: ${src}`);
+  expect(readFileSync(join(vault, ".deja/meta/乱码名-A7f3 2.jpg.md"), "utf8")).toContain(`source: ${src}`);
 });
 
 test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的文件", async ({ page }) => {
@@ -122,7 +122,7 @@ test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的�
   await page.getByRole("button", { name: "撤回" }).click();
   await expect(toast(page, "success").filter({ hasText: "已撤回导入" })).toBeVisible();
   expect(existsSync(join(vault, "海报/zz-最后一张.jpg"))).toBe(false);
-  expect(existsSync(join(vault, ".shelf/meta/海报/zz-最后一张.jpg.md"))).toBe(false);
+  expect(existsSync(join(vault, ".deja/meta/海报/zz-最后一张.jpg.md"))).toBe(false);
   await expect(page.locator('[data-rel-path="海报/zz-最后一张.jpg"]')).toHaveCount(0);
 });
 

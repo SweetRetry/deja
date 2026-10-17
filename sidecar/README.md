@@ -37,7 +37,7 @@ Only `/embed` counts as activity for the idle timeout; `/health` probes do not
 keep the model alive. The app starts the model with `--exit-with-stdin` and
 holds the pipe, so the model exits with the app even on a crash or `kill -9`,
 and a search after an idle exit starts it again (~3 s). The app's port is 5187
-unless `SHELF_MODEL_PORT` overrides it.
+unless `DEJA_MODEL_PORT` overrides it.
 
 The process prints exactly one line to stdout once the model is loaded and the
 socket is listening:

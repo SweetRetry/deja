@@ -5,7 +5,7 @@ import { humanError } from "@/lib/errors";
 import { readStored, writeStored } from "@/lib/storage";
 import type { AppSettings } from "@/lib/types";
 
-const LAST_VAULT = "shelf.vault";
+const LAST_VAULT = "deja.vault";
 
 const message = (problem: unknown) => (problem instanceof Error ? problem.message : String(problem));
 

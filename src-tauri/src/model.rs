@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// 5187 unless SHELF_MODEL_PORT says otherwise, so a test backend can run its
+/// 5187 unless DEJA_MODEL_PORT says otherwise, so a test backend can run its
 /// own model next to a dev app instead of borrowing the app's.
 fn port() -> u16 {
-  std::env::var("SHELF_MODEL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(5187)
+  std::env::var("DEJA_MODEL_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(5187)
 }
 /// Measured in sidecar/eval: 512 beats 256 by ~0.03 mAP on the 148-image set.
 pub const DIM: usize = 512;
@@ -27,7 +27,7 @@ pub struct Item {
 }
 
 pub fn sidecar_dir() -> Option<PathBuf> {
-  if let Ok(dir) = std::env::var("SHELF_SIDECAR") {
+  if let Ok(dir) = std::env::var("DEJA_SIDECAR") {
     let path = PathBuf::from(dir);
     if path.join("embed_server.py").exists() {
       return Some(path);
@@ -285,7 +285,7 @@ pub fn embed(items: &[Item]) -> Result<Vec<(String, Vec<f32>)>, String> {
     return Ok(Vec::new());
   }
   let body = serde_json::to_string(&json!({ "items": items, "dim": DIM })).map_err(|e| e.to_string())?;
-  if std::env::var("SHELF_DEBUG_EMBED").is_ok() {
+  if std::env::var("DEJA_DEBUG_EMBED").is_ok() {
     let log = crate::data_dir().join("embed-client.log");
     let _ = std::fs::OpenOptions::new().create(true).append(true).open(&log).map(|mut file| {
       use std::io::Write;

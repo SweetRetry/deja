@@ -118,11 +118,11 @@ static IMPORTED: Mutex<std::collections::BTreeSet<PathBuf>> = Mutex::new(std::co
 /// Always absolute: thumbnail paths are handed to another process (the model
 /// sidecar) whose working directory is not ours.
 pub fn data_dir() -> PathBuf {
-  let raw = match std::env::var("SHELF_DATA_DIR") {
+  let raw = match std::env::var("DEJA_DATA_DIR") {
     Ok(dir) => PathBuf::from(dir),
     Err(_) => {
       let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-      PathBuf::from(home).join("Library/Application Support/Shelf")
+      PathBuf::from(home).join("Library/Application Support/Deja")
     }
   };
   if raw.is_absolute() {
@@ -275,9 +275,9 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "settings" => serde_json::to_value(settings::get()).map_err(|e| e.to_string()),
     "save_settings" => save_settings(args),
     "selfcheck_requested" => Ok(json!({
-      "enabled": std::env::var("SHELF_SELFCHECK").is_ok(),
-      "vault": std::env::var("SHELF_SELFCHECK_VAULT").ok(),
-      "out": std::env::var("SHELF_SELFCHECK_OUT").ok(),
+      "enabled": std::env::var("DEJA_SELFCHECK").is_ok(),
+      "vault": std::env::var("DEJA_SELFCHECK_VAULT").ok(),
+      "out": std::env::var("DEJA_SELFCHECK_OUT").ok(),
     })),
     "selfcheck_report" => selfcheck_report(args),
     "model_status" => Ok(json!({ "ready": model::healthy(), "sidecar": model::sidecar_dir().map(|p| p.to_string_lossy().to_string()) })),
@@ -288,7 +288,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
 /// Written by the app itself from inside the real window, then the process
 /// exits so a harness can read the verdict without touching the UI.
 fn selfcheck_report(args: &Value) -> Result<Value, String> {
-  let out = std::env::var("SHELF_SELFCHECK_OUT").map_err(|_| "SHELF_SELFCHECK_OUT is not set")?;
+  let out = std::env::var("DEJA_SELFCHECK_OUT").map_err(|_| "DEJA_SELFCHECK_OUT is not set")?;
   let report = args.get("report").cloned().unwrap_or_else(|| json!({}));
   let body = serde_json::to_string_pretty(&report)
     .map_err(|e| e.to_string())?;
@@ -356,7 +356,7 @@ fn watch_folder(root: &Path) {
   std::thread::spawn(move || {
     let Ok(mut watcher) = notify::recommended_watcher(|event: notify::Result<notify::Event>| {
       if let Ok(event) = event {
-        if event.paths.iter().any(|p| !p.to_string_lossy().contains("/.shelf/")) {
+        if event.paths.iter().any(|p| !p.to_string_lossy().contains("/.deja/")) {
           DIRTY.store(true, std::sync::atomic::Ordering::SeqCst);
         }
       }

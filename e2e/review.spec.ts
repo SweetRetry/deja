@@ -22,7 +22,7 @@ for (const theme of ["dark", "light"] as const) {
   test(`review ${theme}`, async ({ page }) => {
     test.setTimeout(120_000);
     await page.addInitScript((value) => {
-      localStorage.setItem("shelf.view", JSON.stringify({ theme: value }));
+      localStorage.setItem("deja.view", JSON.stringify({ theme: value }));
     }, theme);
     await page.goto("/");
     await page.getByRole("button", { name: "打开文件夹", exact: true }).waitFor();

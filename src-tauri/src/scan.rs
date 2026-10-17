@@ -34,7 +34,7 @@ fn modified_ms(path: &Path) -> i64 {
 }
 
 /// Every image and video under `root`, whatever the vault's scope says; dot
-/// folders (`.git`, `.shelf`) and the built-in list are never media.
+/// folders (`.git`, `.deja`) and the built-in list are never media.
 pub fn walk(root: &Path) -> Vec<RawFile> {
   let mut files = Vec::new();
   let mut stack = vec![root.to_path_buf()];

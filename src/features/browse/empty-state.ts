@@ -57,7 +57,7 @@ export function emptyState({ open, error, query, filter, folderTotal }: EmptyInp
   }
   return {
     title: "此文件夹中没有图片或视频",
-    body: "放入图片或视频后，Shelf 自动生成预览并建立语义索引。",
+    body: "放入图片或视频后，Déjà 自动生成预览并建立语义索引。",
     action: null,
   };
 }

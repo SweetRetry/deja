@@ -1,9 +1,9 @@
 // Builds the demo vault from real photographs and writes the contract file that
 // both the Rust scanner test and the e2e run read.
 //
-//   SHELF_FIXTURES_SOURCE=/path/to/12-photos node scripts/make-fixtures.mjs
+//   DEJA_FIXTURES_SOURCE=/path/to/12-photos node scripts/make-fixtures.mjs
 //
-// The photos are not in the repo: point SHELF_FIXTURES_SOURCE at a folder
+// The photos are not in the repo: point DEJA_FIXTURES_SOURCE at a folder
 // holding them as NN-*.jpg (01-*.jpg through 11-*.jpg).
 import {
   copyFileSync,
@@ -16,9 +16,9 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-const SOURCE = process.env.SHELF_FIXTURES_SOURCE;
+const SOURCE = process.env.DEJA_FIXTURES_SOURCE;
 if (!SOURCE) {
-  console.error("set SHELF_FIXTURES_SOURCE to the folder holding 01-*.jpg through 11-*.jpg");
+  console.error("set DEJA_FIXTURES_SOURCE to the folder holding 01-*.jpg through 11-*.jpg");
   process.exit(1);
 }
 const ROOT = "public/vault";
@@ -125,11 +125,11 @@ writeFileSync(join(ROOT, "README.md"), "# 素材库\n\n不是图片，不该进�
 
 // The scope is already chosen (everything in), so tests open straight onto
 // the wall; the first-run picker has its own test on a scratch copy.
-mkdirSync(join(ROOT, ".shelf"), { recursive: true });
-writeFileSync(join(ROOT, ".shelf/scope.json"), JSON.stringify({ excluded: [] }) + "\n");
+mkdirSync(join(ROOT, ".deja"), { recursive: true });
+writeFileSync(join(ROOT, ".deja/scope.json"), JSON.stringify({ excluded: [] }) + "\n");
 
 for (const [relPath, info] of Object.entries(meta)) {
-  const target = join(ROOT, ".shelf/meta", `${relPath}.md`);
+  const target = join(ROOT, ".deja/meta", `${relPath}.md`);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, frontmatter(info));
 }

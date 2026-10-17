@@ -1,24 +1,24 @@
 [package]
-name = "shelf"
+name = "deja"
 version = "0.1.0"
 description = "Folder-first asset browser"
 edition = "2021"
 rust-version = "1.77"
-default-run = "shelf"
+default-run = "deja"
 
 [lib]
-name = "shelf_lib"
+name = "deja_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "shelf-e2e"
+name = "deja-e2e"
 path = "src/bin/e2e_server.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"

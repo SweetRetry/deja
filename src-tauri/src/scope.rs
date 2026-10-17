@@ -1,5 +1,5 @@
 // Which folders of one vault get indexed. It lives in the vault, in
-// `.shelf/scope.json`, so it travels with the folder. Exclusion is by subtree,
+// `.deja/scope.json`, so it travels with the folder. Exclusion is by subtree,
 // so a folder that appears later is in scope until the user says otherwise.
 use crate::scan::RawFile;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub struct FolderCount {
 }
 
 fn path(root: &Path) -> PathBuf {
-  root.join(".shelf").join("scope.json")
+  root.join(".deja").join("scope.json")
 }
 
 /// Trimmed, deduplicated, and only the outermost of nested paths. The root ("")
@@ -61,7 +61,7 @@ pub fn write(root: &Path, excluded: Vec<String>) -> Result<Scope, String> {
   let scope = Scope { chosen: true, excluded: normalize(excluded) };
   let target = path(root);
   let temp = target.with_extension("json.tmp");
-  std::fs::create_dir_all(root.join(".shelf")).map_err(|e| e.to_string())?;
+  std::fs::create_dir_all(root.join(".deja")).map_err(|e| e.to_string())?;
   std::fs::write(&temp, serde_json::to_string_pretty(&scope).map_err(|e| e.to_string())?)
     .map_err(|e| format!("cannot write scope: {e}"))?;
   std::fs::rename(&temp, &target).map_err(|e| format!("cannot write scope: {e}"))?;
@@ -123,7 +123,7 @@ mod tests {
 
   #[test]
   fn a_missing_file_is_unchosen_and_a_written_one_reads_back() {
-    let root = std::env::temp_dir().join(format!("shelf-scope-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("deja-scope-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     assert_eq!(read(&root), Scope::default());

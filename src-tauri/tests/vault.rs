@@ -2,7 +2,7 @@
 // Proves scanning, metadata round trips, and that a thumbnail lands on disk and
 // decodes, without needing the GUI.
 use serde_json::json;
-use shelf_lib::{color, dispatch, meta, scan, thumb};
+use deja_lib::{color, dispatch, meta, scan, thumb};
 use std::path::{Path, PathBuf};
 
 fn workspace() -> PathBuf {
@@ -26,7 +26,7 @@ fn temp_vault(name: &str) -> PathBuf {
     .duration_since(std::time::UNIX_EPOCH)
     .expect("clock")
     .as_nanos();
-  let dir = std::env::temp_dir().join(format!("shelf-{name}-{}-{stamp}", std::process::id()));
+  let dir = std::env::temp_dir().join(format!("deja-{name}-{}-{stamp}", std::process::id()));
   let _ = std::fs::remove_dir_all(&dir);
   copy_tree(&workspace().join("public/vault"), &dir);
   dir
@@ -42,7 +42,7 @@ fn scans_the_fixture_vault_and_ignores_noise() {
   assert!(paths.contains(&"摄影/人像/黄昏逆光-01.jpg".to_string()));
   assert!(paths.contains(&"乱码名-A7f3.jpg".to_string()), "chinese and ascii names both scan");
   assert!(
-    !paths.iter().any(|path| path.starts_with(".shelf")),
+    !paths.iter().any(|path| path.starts_with(".deja")),
     "the hidden metadata folder is not media"
   );
   assert!(
@@ -63,11 +63,11 @@ fn scans_the_fixture_vault_and_ignores_noise() {
 fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
   let vault = temp_vault("scope");
   // The fixture ships a chosen scope so e2e skips the picker; this is a first open.
-  let _ = std::fs::remove_file(vault.join(".shelf/scope.json"));
+  let _ = std::fs::remove_file(vault.join(".deja/scope.json"));
   let data = vault.with_extension("data");
   std::fs::create_dir_all(&data).expect("data dir");
   std::fs::write(data.join("settings.json"), r#"{"semantic":false}"#).expect("settings");
-  std::env::set_var("SHELF_DATA_DIR", &data);
+  std::env::set_var("DEJA_DATA_DIR", &data);
   let rels = |view: &serde_json::Value| -> Vec<String> {
     view["entries"].as_array().expect("entries").iter().map(|e| e["relPath"].as_str().unwrap().to_string()).collect()
   };
@@ -87,7 +87,7 @@ fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
   assert!(!rels(&narrowed).iter().any(|rel| rel.starts_with("摄影/人像/")), "the subtree left the entries");
   assert!(narrowed["scope"]["tree"].as_array().unwrap().contains(&json!({ "path": "摄影/人像", "files": 3 })), "but stays in the tree");
   assert!(!narrowed["folders"].as_array().unwrap().contains(&json!("摄影/人像")), "and leaves the folder list");
-  let raw = std::fs::read_to_string(vault.join(".shelf/scope.json")).expect("scope.json written");
+  let raw = std::fs::read_to_string(vault.join(".deja/scope.json")).expect("scope.json written");
   assert_eq!(serde_json::from_str::<serde_json::Value>(&raw).unwrap(), json!({ "excluded": ["摄影/人像"] }));
   let search = dispatch("search", &json!({ "query": "逆光", "semantic": false })).expect("search");
   assert!(!rels(&search).iter().any(|rel| rel.starts_with("摄影/人像/")), "search only sees files in scope");
@@ -122,7 +122,7 @@ fn metadata_round_trips_through_disk() {
   let rel = "海报/深色海报.jpg";
   assert!(meta::read(&vault, rel).tags.is_empty(), "no file yet means empty meta");
 
-  let written = shelf_lib::Meta {
+  let written = deja_lib::Meta {
     tags: vec!["深色".into(), "封面,候选".into()],
     rating: 4,
     note: "留白多。\n第二行。".into(),
@@ -136,7 +136,7 @@ fn metadata_round_trips_through_disk() {
   let back = meta::read(&vault, rel);
   assert_eq!(back, written, "what goes in comes out");
 
-  meta::write(&vault, rel, &shelf_lib::Meta::default()).expect("clear meta");
+  meta::write(&vault, rel, &deja_lib::Meta::default()).expect("clear meta");
   assert!(!meta::meta_path(&vault, rel).exists(), "an empty meta removes the file");
   let _ = std::fs::remove_dir_all(&vault);
 }
