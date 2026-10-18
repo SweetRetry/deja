@@ -105,5 +105,6 @@ pub fn build(cache_dir: &Path, file: &RawFile) -> Computed {
     colors,
     dhash: hash,
     thumb_path: thumb.map(|p| p.to_string_lossy().to_string()),
+    analysis: crate::ANALYSIS,
   }
 }

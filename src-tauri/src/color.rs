@@ -404,21 +404,29 @@ pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec
     .collect()
 }
 
-/// 64-bit dHash over the 32x32 average. 64 hex chars? No: 16.
+/// 64-bit dHash: the sample averaged down to 9x8 grey, each bit whether a cell
+/// is brighter than its right neighbour. The whole picture goes into the
+/// hash, so two pictures that only share a corner do not look alike.
 pub fn dhash(sample: &[Rgb], side: u32) -> String {
-  if sample.len() != (side * side) as usize || side < 9 {
+  let side = side as usize;
+  if sample.len() != side * side || side < 9 {
     return String::new();
   }
   let gray: Vec<f64> = sample
     .iter()
     .map(|c| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b)
     .collect();
+  let cell = |x: usize, y: usize| {
+    let (x0, x1) = (x * side / 9, (x + 1) * side / 9);
+    let (y0, y1) = (y * side / 8, (y + 1) * side / 8);
+    let gray = &gray;
+    let sum: f64 = (y0..y1).flat_map(|sy| (x0..x1).map(move |sx| gray[sy * side + sx])).sum();
+    sum / ((x1 - x0) * (y1 - y0)) as f64
+  };
   let mut bits = 0u64;
-  for y in 0..8usize {
-    for x in 0..8usize {
-      let left = gray[y * side as usize + x];
-      let right = gray[y * side as usize + x + 1];
-      bits = (bits << 1) | u64::from(left > right);
+  for y in 0..8 {
+    for x in 0..8 {
+      bits = (bits << 1) | u64::from(cell(x, y) > cell(x + 1, y));
     }
   }
   format!("{bits:016x}")
@@ -534,6 +542,22 @@ mod tests {
     assert_eq!(colors.len(), 1, "flat image should collapse to one color");
     assert_eq!(colors[0].share, 1.0);
     assert_eq!(dhash(&sample, 32), "0000000000000000");
+  }
+
+  #[test]
+  fn dhash_reads_the_whole_picture() {
+    // Same flat top-left corner, different everything else: the old hash read
+    // only that corner and called these two the same picture.
+    let ramp = |flip: bool| -> Vec<Rgb> {
+      (0..32 * 32)
+        .map(|i| {
+          let (x, y) = (i % 32, i / 32);
+          let v = if x < 10 && y < 10 { 0.0 } else if flip { 1.0 - x as f64 / 31.0 } else { x as f64 / 31.0 };
+          Rgb { r: v, g: v, b: v }
+        })
+        .collect()
+    };
+    assert!(hamming(&dhash(&ramp(false), 32), &dhash(&ramp(true), 32)) > 32);
   }
 
   #[test]

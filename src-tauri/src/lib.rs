@@ -74,11 +74,18 @@ pub struct Computed {
   pub colors: Vec<ColorShare>,
   pub dhash: String,
   pub thumb_path: Option<String>,
+  /// Which ANALYSIS derived this; an older one is derived again.
+  #[serde(default)]
+  pub analysis: u32,
 }
+
+/// Bumped when what `thumb::build` derives changes. 1: dhash reads the whole
+/// picture, not its top-left corner.
+pub const ANALYSIS: u32 = 1;
 
 impl Computed {
   pub fn matches(&self, file: &scan::RawFile) -> bool {
-    self.size_bytes == file.size_bytes && self.modified == file.modified
+    self.analysis == ANALYSIS && self.size_bytes == file.size_bytes && self.modified == file.modified
   }
 }
 
