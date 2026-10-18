@@ -13,6 +13,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "deja-e2e"
 path = "src/bin/e2e_server.rs"
+# Test-only backend; off by default so release bundles skip it.
+required-features = ["e2e"]
+
+[features]
+e2e = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
