@@ -4,14 +4,14 @@ import { Breadcrumb } from "./Breadcrumb";
 import { FilterChips } from "./FilterChips";
 import { FilterMenu } from "./FilterMenu";
 import { SearchField } from "./SearchField";
-import { SimilarBar } from "./SimilarBar";
+import { LensBar } from "./LensBar";
 
 export function Toolbar({ leading }: { leading?: React.ReactNode }) {
-  const similar = useSession((s) => s.browse.similar !== null);
+  const lens = useSession((s) => s.browse.lens);
   const semantic = useSession((s) => s.browse.results.semantic);
   const open = useVaultPath() !== null;
 
-  if (similar) return <SimilarBar leading={leading} />;
+  if (lens) return <LensBar lens={lens} leading={leading} />;
 
   return (
     <header

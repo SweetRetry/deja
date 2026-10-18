@@ -1,7 +1,18 @@
 // Every change to the session is one of these events. Both slices (vault,
 // browse) see every event and each declares which states accept it, so an
 // async answer that lands after the state it was asked for is dropped.
-import type { AppSettings, Entry, EntryMeta, Filter, Ranking, SearchResponse, Sort, VaultView } from "../../lib/types.ts";
+import type {
+  AppSettings,
+  DuplicateGroup,
+  Entry,
+  EntryMeta,
+  Filter,
+  Moved,
+  Ranking,
+  SearchResponse,
+  Sort,
+  VaultView,
+} from "../../lib/types.ts";
 
 export type Progress = { indexed: number; embedded: number; total: number; remaining: number };
 
@@ -36,12 +47,25 @@ export type SessionEvent =
   | { type: "SEARCH_STARTED"; quiet: boolean }
   | { type: "RESULTS"; request: number; response: SearchResponse }
   | { type: "SEARCH_FAILED"; request: number }
+  /** A plain click: this file alone. */
   | { type: "SELECT"; relPath: string; reveal?: boolean }
-  /** The file went to the Trash: it leaves the wall, selection moving on. */
-  | { type: "ENTRY_REMOVED"; relPath: string }
+  /** ⌘-click: adds the file to the picked set, or takes it out. */
+  | { type: "PICK_TOGGLE"; relPath: string }
+  /** ⇧-click: every file on the wall from the focused one to this one. */
+  | { type: "PICK_RANGE"; relPath: string }
+  /** Exactly these files, the first one focused; none leaves the focus alone. */
+  | { type: "PICK"; relPaths: string[] }
+  /** The files went to the Trash: they leave the wall, selection moving on. */
+  | { type: "ENTRIES_REMOVED"; relPaths: string[] }
+  /** The files moved to another folder: every reference follows them. */
+  | { type: "ENTRIES_MOVED"; moved: Moved[] }
   | { type: "LOCATE"; relPath: string }
   | { type: "SIMILAR_REQUESTED"; source: string }
   | { type: "SIMILAR_RESULTS"; source: string; paths: string[] }
   | { type: "SIMILAR_FAILED"; source: string }
-  | { type: "SIMILAR_CLEARED" }
+  | { type: "DUPLICATES_REQUESTED" }
+  | { type: "DUPLICATES_RESULTS"; groups: DuplicateGroup[] }
+  | { type: "DUPLICATES_FAILED" }
+  /** Back from the similar or the duplicates view to the search. */
+  | { type: "LENS_CLEARED" }
   | { type: "VIEWER"; open: boolean };

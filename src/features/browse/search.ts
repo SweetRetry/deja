@@ -21,6 +21,26 @@ async function search(quiet: boolean) {
   }
 }
 
+const DUPLICATES_DEBOUNCE = 1000;
+
+/** Compares again while the duplicates view is up and the files change: a
+ *  file just indexed brings the hash that finds its near copies. */
+function refreshDuplicates(): () => void {
+  return watch(
+    (s) => [s.browse.lens?.kind === "duplicates", s.vault.revision] as const,
+    ([shown], previous) => {
+      if (!shown || !previous?.[0]) return;
+      const timer = setTimeout(() => {
+        api
+          .duplicates()
+          .then(({ groups }) => dispatch({ type: "DUPLICATES_RESULTS", groups }))
+          .catch(() => undefined);
+      }, DUPLICATES_DEBOUNCE);
+      return () => clearTimeout(timer);
+    },
+  );
+}
+
 export function startSearch(): () => void {
   const stopSearch = watch(
     (s) =>
@@ -54,8 +74,10 @@ export function startSearch(): () => void {
       writeStored(RANKING_KEY, ranking);
     },
   );
+  const stopDuplicates = refreshDuplicates();
   return () => {
     stopSearch();
     stopPersist();
+    stopDuplicates();
   };
 }

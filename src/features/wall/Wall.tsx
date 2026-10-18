@@ -1,10 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { useSession, type Session } from "@/app/store";
 import { useRoot, useWallEntries, useWallLoading } from "@/app/selectors";
-import { openViewer, select } from "@/features/browse/commands";
+import { clearPicked, openViewer, pickAll, select } from "@/features/browse/commands";
+import type { Lens } from "@/features/browse/browse";
 import { belowMatch, THUMB_WIDTH, usePreferences } from "@/features/settings/preferences";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SearchScore } from "@/lib/types";
+import type { Entry, SearchScore } from "@/lib/types";
+import { useHotkey } from "@/lib/use-hotkey";
 import { cn } from "@/lib/utils";
 import { CAPTION_HEIGHT, layout, step } from "./layout";
 import { Tile } from "./Tile";
@@ -16,15 +18,32 @@ import { useViewport } from "./use-viewport";
 const PADDING_X = 48;
 const OVERSCAN = 600;
 const NO_SCORES: Record<string, SearchScore> = {};
+const NO_NOTES = new Map<string, string>();
 
-// The similar view ranks by likeness, so the search's scores do not apply to it.
-const scoresOf = (s: Session) => (s.browse.similar ? NO_SCORES : s.browse.results.scores);
+// A lens ranks by its own rule, so the search's scores do not apply to it.
+const scoresOf = (s: Session) => (s.browse.lens ? NO_SCORES : s.browse.results.scores);
 
 /** Changes whenever the result set means something new; the wall returns to the top. */
 const scrollKeyOf = (s: Session) => {
-  const { query, filter, sort, ranking, similar } = s.browse;
-  return JSON.stringify([query.trim(), filter, sort, ranking, similar?.source ?? null]);
+  const { query, filter, sort, ranking, lens } = s.browse;
+  return JSON.stringify([query.trim(), filter, sort, ranking, lens?.kind ?? null, lens?.kind === "similar" ? lens.source : null]);
 };
+
+const groupsOf = (s: Session) => (s.browse.lens?.kind === "duplicates" ? s.browse.lens.groups : null);
+
+/** Under each copy: whether it is the one to keep, and its size to judge by. */
+function copyNotes(groups: Extract<Lens, { kind: "duplicates" }>["groups"], byPath: Record<string, Entry> | undefined) {
+  if (!groups || !byPath) return NO_NOTES;
+  const notes = new Map<string, string>();
+  for (const group of groups) {
+    group.paths.forEach((path, index) => {
+      const entry = byPath[path];
+      const size = entry?.width && entry.height ? ` · ${entry.width}×${entry.height}` : "";
+      notes.set(path, `${index === 0 ? "保留" : group.exact ? "相同副本" : "相近副本"}${size}`);
+    });
+  }
+  return notes;
+}
 
 /** First load: tiles in the wall's own shape, never a spinner. */
 function WallSkeleton({ cell }: { cell: number }) {
@@ -46,6 +65,13 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
   const loading = useWallLoading();
   const pending = useSession((s) => s.browse.pending);
   const selected = useSession((s) => s.browse.selected);
+  const pickedPaths = useSession((s) => s.browse.picked);
+  const picked = useMemo(() => new Set(pickedPaths), [pickedPaths]);
+  const viewing = useSession((s) => s.browse.viewing);
+  const groups = useSession(groupsOf);
+  const byPath = useSession((s) => s.vault.library?.byPath);
+  const notes = useMemo(() => copyNotes(groups, byPath), [groups, byPath]);
+  const breaks = useMemo(() => (groups ? new Set(groups.map((group) => group.paths[0] ?? "")) : undefined), [groups]);
   const scores = useSession(scoresOf);
   const scrollKey = useSession(scrollKeyOf);
   const mode = usePreferences((p) => p.layout);
@@ -58,6 +84,9 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
   useEffect(() => {
     viewport.current?.scrollTo({ top: 0 });
   }, [viewport, scrollKey]);
+  // The viewer owns its keys while open; Esc leaves a lens only once nothing is picked.
+  useHotkey("mod+a", pickAll, { enabled: !viewing && entries.length > 1 });
+  useHotkey("escape", clearPicked, { enabled: !viewing && pickedPaths.length > 0 });
 
   const { placed, height } = useMemo(
     () =>
@@ -66,8 +95,9 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
         cell,
         uniform: mode === "grid",
         caption: CAPTION_HEIGHT,
+        breaks,
       }),
-    [entries, box.width, cell, mode],
+    [entries, box.width, cell, mode, breaks],
   );
   useReveal(viewport, placed);
 
@@ -127,7 +157,9 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
                   width={tile.width}
                   height={tile.height}
                   selected={tile.entry.relPath === selected}
+                  picked={picked.has(tile.entry.relPath)}
                   score={scores[tile.entry.relPath]}
+                  note={notes.get(tile.entry.relPath)}
                   dim={belowMatch(scores[tile.entry.relPath]?.match, dimUnder)}
                   showNames={showNames}
                   root={root}

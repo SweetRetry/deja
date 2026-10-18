@@ -45,3 +45,11 @@ export function openAncestors(toggled: Record<string, boolean>, folder: string):
   if (ancestors.every((rel) => toggled[rel] === true)) return toggled;
   return { ...toggled, ...Object.fromEntries(ancestors.map((rel) => [rel, true])) };
 }
+
+export type MoveTarget = { rel: string; name: string; depth: number };
+
+/** Every folder a file can move into, the vault's own root first, as one open tree. */
+export function moveTargets(folders: string[], rootName: string): MoveTarget[] {
+  const open = Object.fromEntries(folders.map((rel) => [rel, true]));
+  return [{ rel: "", name: rootName, depth: 0 }, ...folderRows(folders, open).map(({ rel, name, depth }) => ({ rel, name, depth: depth + 1 }))];
+}

@@ -9,7 +9,9 @@ pub fn trash(path: &Path, into: Option<&Path>) -> Result<(), String> {
     return ::trash::delete(path).map_err(|e| format!("trash failed: {e}"));
   };
   std::fs::create_dir_all(dir).map_err(|e| format!("trash failed: {e}"))?;
-  let name = path.file_name().ok_or("trash failed: no file name")?;
+  let name = path.file_name().ok_or("trash failed: no file name")?.to_string_lossy();
+  // Copies share names, and a batch sends them in together.
+  let name = crate::import::unique(dir, &name);
   std::fs::rename(path, dir.join(name)).map_err(|e| format!("trash failed: {e}"))
 }
 

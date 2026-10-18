@@ -130,7 +130,7 @@ fn percent_decode(text: &str) -> String {
 }
 
 /// `name.png`, then `name 2.png`, `name 3.png`, the way Finder numbers copies.
-fn unique(dir: &Path, name: &str) -> String {
+pub fn unique(dir: &Path, name: &str) -> String {
   if !dir.join(name).exists() {
     return name.to_string();
   }

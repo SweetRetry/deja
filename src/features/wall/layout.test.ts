@@ -107,3 +107,19 @@ test("keys step from the selection, Home and End jump, other keys do nothing", (
   assert.equal(step(masonry.placed, "a", "x"), undefined);
   assert.equal(step([], null, "End"), null);
 });
+
+test("a break starts its tile on a band below every column", () => {
+  const banded = layout([entry("a", 100, 200), entry("b"), entry("c"), entry("d")], {
+    width: 332,
+    cell: 100,
+    uniform: false,
+    caption: 0,
+    breaks: new Set(["a", "c"]),
+  });
+  assert.deepEqual(boxes(banded.placed), [
+    ["a", 0, 0, 100, 200],
+    ["b", 116, 0, 100, 100],
+    ["c", 0, 232, 100, 100],
+    ["d", 116, 232, 100, 100],
+  ]);
+});

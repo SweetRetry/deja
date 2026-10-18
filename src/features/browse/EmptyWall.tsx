@@ -8,7 +8,9 @@ export function EmptyWall() {
   const query = useSession((s) => s.browse.query);
   const filter = useSession((s) => s.browse.filter);
   const folderTotal = useSession((s) => s.vault.library?.counts[s.browse.filter.folder] ?? 0);
-  const { title, body, action } = emptyState({ query, filter, folderTotal });
+  const lens = useSession((s) => s.browse.lens?.kind ?? null);
+  const vaultTotal = useSession((s) => s.vault.library?.counts[""] ?? 0);
+  const { title, body, action } = emptyState({ query, filter, folderTotal, lens, vaultTotal });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 pt-12 pb-8 text-center">

@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { MagnifyingGlassPlusIcon } from "@phosphor-icons/react";
-import { useSelectedEntry } from "@/app/selectors";
+import { usePicked, useSelectedEntry } from "@/app/selectors";
 import { Button } from "@/components/ui/button";
 import { findSimilar } from "@/features/browse/commands";
 import { InspectorHeader } from "./InspectorHeader";
@@ -8,10 +8,14 @@ import { NoteField } from "./NoteField";
 import { Palette } from "./Palette";
 import { Preview } from "./Preview";
 import { Properties } from "./Properties";
+import { Selection } from "./Selection";
 import { TagField } from "./TagField";
 
 export function Inspector() {
   const entry = useSelectedEntry();
+  const picking = usePicked().length > 0;
+
+  if (picking) return <Selection />;
 
   if (!entry) {
     return (

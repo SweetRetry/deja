@@ -60,3 +60,11 @@ test("mixed filters get the generic wording; folder and tag scope do not count",
   const scoped = { ...emptyFilter, folder: "a", tag: "t" };
   assert.equal(emptyState({ ...base, filter: scoped, folderTotal: 0 }).action, null);
 });
+
+test("an empty duplicates view says what was compared and leads back", () => {
+  assert.deepEqual(emptyState({ ...base, query: "x", lens: "duplicates", vaultTotal: 12 }), {
+    title: "没有重复的素材",
+    body: "比对了全部 12 项素材，没有内容相同或相近的副本。",
+    action: null,
+  });
+});

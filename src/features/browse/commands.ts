@@ -3,6 +3,7 @@ import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
 import type { Filter, Ranking, Sort } from "@/lib/types";
+import { shownPaths } from "./browse";
 import { clearNarrowing } from "./filter";
 
 export const setQuery = (query: string) => dispatch({ type: "QUERY", query });
@@ -29,18 +30,67 @@ export async function findSimilar(source: string) {
   }
 }
 
-export const clearSimilar = () => dispatch({ type: "SIMILAR_CLEARED" });
+export const clearLens = () => dispatch({ type: "LENS_CLEARED" });
 
-/** Moves a file to the system Trash. The Trash is the undo, so there is no
- *  confirmation: the tile leaves the wall and the toast says where it went. */
-export async function deleteEntry(relPath: string) {
-  const entry = session().vault.library?.byPath[relPath];
-  if (!entry) return;
+export async function findDuplicates() {
+  dispatch({ type: "DUPLICATES_REQUESTED" });
   try {
-    const { view } = await api.trash(relPath);
-    dispatch({ type: "ENTRY_REMOVED", relPath });
+    const { groups } = await api.duplicates();
+    dispatch({ type: "DUPLICATES_RESULTS", groups });
+  } catch (problem) {
+    dispatch({ type: "DUPLICATES_FAILED" });
+    toast.error(humanError(problem));
+  }
+}
+
+/** A click on a tile: ⌘ adds or removes it, ⇧ picks the run to it, plain selects it alone. */
+export function clickTile(relPath: string, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
+  if (event.metaKey || event.ctrlKey) dispatch({ type: "PICK_TOGGLE", relPath });
+  else if (event.shiftKey) dispatch({ type: "PICK_RANGE", relPath });
+  else select(relPath);
+}
+
+export const pick = (relPaths: string[]) => dispatch({ type: "PICK", relPaths });
+export const pickAll = () => pick(shownPaths(session().browse) ?? []);
+/** Back to the focused file alone. */
+export const clearPicked = () => pick([]);
+
+const nameOf = (relPath: string) => session().vault.library?.byPath[relPath]?.name ?? relPath.split("/").pop();
+const folderName = (folder: string) => folder.split("/").pop() || session().vault.library?.root.split("/").pop() || "根目录";
+
+/** Moves files to the system Trash. The Trash is the undo, so there is no
+ *  confirmation: the tiles leave the wall and the toast says where they went. */
+export async function trashEntries(relPaths: string[]) {
+  if (relPaths.length === 0) return;
+  try {
+    const { trashed, error, view } = await api.trash(relPaths);
+    dispatch({ type: "ENTRIES_REMOVED", relPaths: trashed });
     dispatch({ type: "RESCANNED", view });
-    toast.success(`已将「${entry.name}」移到废纸篓`, { description: "需要时可在访达的废纸篓里找回。" });
+    const what = trashed.length === 1 ? `「${nameOf(trashed[0] ?? "")}」` : ` ${trashed.length} 项素材`;
+    if (error) {
+      toast.error(`有 ${relPaths.length - trashed.length} 项没能移到废纸篓`, { description: humanError(error) });
+    } else {
+      toast.success(`已将${what}移到废纸篓`, { description: "需要时可在访达的废纸篓里找回。" });
+    }
+  } catch (problem) {
+    toast.error(humanError(problem));
+  }
+}
+
+/** Moves files into another folder of the vault; tags and thumbnails go along. */
+export async function moveEntries(relPaths: string[], folder: string) {
+  if (relPaths.length === 0) return;
+  try {
+    const { moved, view } = await api.move(relPaths, folder);
+    dispatch({ type: "ENTRIES_MOVED", moved });
+    dispatch({ type: "RESCANNED", view });
+    const where = `「${folderName(folder)}」`;
+    if (moved.length === 0) {
+      toast(`已经在${where}里了`);
+      return;
+    }
+    const what = moved.length === 1 ? `「${nameOf(moved[0]?.to ?? "")}」` : ` ${moved.length} 项素材`;
+    toast.success(`已将${what}移到${where}`);
   } catch (problem) {
     toast.error(humanError(problem));
   }

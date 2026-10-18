@@ -51,10 +51,10 @@ test("右键删除把素材移到废纸篓，墙上不再有它", async ({ page 
 test("斜杠以外的路径不被接受", async ({ page }) => {
   await openVault(page);
   const answer = await page.evaluate(async () => {
-    const response = await fetch("/api/trash_entry", {
+    const response = await fetch("/api/trash_entries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ relPath: "../not-in-the-vault.jpg" }),
+      body: JSON.stringify({ relPaths: ["../not-in-the-vault.jpg"] }),
     });
     return (await response.json()) as { ok: boolean; error?: string };
   });

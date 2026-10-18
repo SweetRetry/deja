@@ -6,8 +6,13 @@ fn thumb_name(rel_path: &str) -> String {
   format!("{:016x}.png", color::fnv64(rel_path.as_bytes()))
 }
 
+/// Where a file's thumbnail lives in the cache.
+pub fn path_for(cache_dir: &Path, rel_path: &str) -> PathBuf {
+  cache_dir.join("thumbs").join(thumb_name(rel_path))
+}
+
 fn build_thumb(cache_dir: &Path, file: &RawFile, resize: bool) -> Option<PathBuf> {
-  let target = cache_dir.join("thumbs").join(thumb_name(&file.rel_path));
+  let target = path_for(cache_dir, &file.rel_path);
   if target.exists() {
     return Some(target);
   }

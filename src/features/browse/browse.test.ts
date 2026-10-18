@@ -3,6 +3,7 @@ import test from "node:test";
 import { initialSession, reduce, type Session } from "../../app/session.ts";
 import { emptyFilter, type Entry, type SearchResponse } from "../../lib/types.ts";
 import type { SessionEvent } from "../vault/events.ts";
+import { extraCopies } from "./browse.ts";
 
 const run = (events: SessionEvent[], start: Session = initialSession()): Session =>
   events.reduce((session, event) => reduce(session, event), start);
@@ -117,9 +118,9 @@ test("similar answers for a source no longer shown are dropped", () => {
     open,
   );
   const late = reduce(asked, { type: "SIMILAR_RESULTS", source: "a.jpg", paths: ["p/c.jpg"] });
-  assert.equal(late.browse.similar?.paths, null);
-  const cleared = run([{ type: "SIMILAR_CLEARED" }, { type: "SIMILAR_RESULTS", source: "b.jpg", paths: ["a.jpg"] }], asked);
-  assert.equal(cleared.browse.similar, null);
+  assert.deepEqual(late.browse.lens, { kind: "similar", source: "b.jpg", paths: null });
+  const cleared = run([{ type: "LENS_CLEARED" }, { type: "SIMILAR_RESULTS", source: "b.jpg", paths: ["a.jpg"] }], asked);
+  assert.equal(cleared.browse.lens, null);
 });
 
 test("an import selects what arrived and leaves the similar view", () => {
@@ -130,7 +131,7 @@ test("an import selects what arrived and leaves the similar view", () => {
     select: "new.jpg",
   });
   assert.equal(imported.browse.selected, "new.jpg");
-  assert.equal(imported.browse.similar, null);
+  assert.equal(imported.browse.lens, null);
 });
 
 test("the viewer only opens on a selection", () => {
@@ -140,14 +141,14 @@ test("the viewer only opens on a selection", () => {
 
 test("a deleted file leaves the wall and the next tile takes the selection", () => {
   const selected = reduce(open, { type: "SELECT", relPath: "b.jpg" });
-  const removed = reduce(selected, { type: "ENTRY_REMOVED", relPath: "b.jpg" });
+  const removed = reduce(selected, { type: "ENTRIES_REMOVED", relPaths: ["b.jpg"] });
   assert.deepEqual(removed.browse.results.paths, ["a.jpg", "p/c.jpg"]);
   assert.equal(removed.browse.selected, "p/c.jpg");
 });
 
 test("deleting the last tile selects the one before it", () => {
   const selected = reduce(open, { type: "SELECT", relPath: "p/c.jpg" });
-  const removed = reduce(selected, { type: "ENTRY_REMOVED", relPath: "p/c.jpg" });
+  const removed = reduce(selected, { type: "ENTRIES_REMOVED", relPaths: ["p/c.jpg"] });
   assert.equal(removed.browse.selected, "b.jpg");
 });
 
@@ -156,16 +157,16 @@ test("deleting a file the similar view lists takes it out of that view too", () 
     [{ type: "SIMILAR_REQUESTED", source: "a.jpg" }, { type: "SIMILAR_RESULTS", source: "a.jpg", paths: ["b.jpg", "p/c.jpg"] }],
     open,
   );
-  const removed = reduce(reduce(similar, { type: "SELECT", relPath: "b.jpg" }), { type: "ENTRY_REMOVED", relPath: "b.jpg" });
-  assert.deepEqual(removed.browse.similar?.paths, ["p/c.jpg"]);
+  const removed = reduce(reduce(similar, { type: "SELECT", relPath: "b.jpg" }), { type: "ENTRIES_REMOVED", relPaths: ["b.jpg"] });
+  assert.deepEqual(removed.browse.lens, { kind: "similar", source: "a.jpg", paths: ["p/c.jpg"] });
   assert.deepEqual(removed.browse.results.paths, ["a.jpg", "p/c.jpg"], "the search behind it forgets the file too");
   assert.equal(removed.browse.selected, "p/c.jpg");
 });
 
 test("the viewer closes on the file it was showing", () => {
   const viewing = reduce(open, { type: "VIEWER", open: true });
-  assert.equal(reduce(viewing, { type: "ENTRY_REMOVED", relPath: "b.jpg" }).browse.viewing, true, "another file is open");
-  assert.equal(reduce(viewing, { type: "ENTRY_REMOVED", relPath: "a.jpg" }).browse.viewing, false);
+  assert.equal(reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: ["b.jpg"] }).browse.viewing, true, "another file is open");
+  assert.equal(reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: ["a.jpg"] }).browse.viewing, false);
 });
 
 test("an answer from the previous folder cannot land in the next one", () => {
@@ -179,4 +180,57 @@ test("a rescan of the previous folder cannot land in the next one", () => {
   const other = { root: "/elsewhere", folders: [], scope, entries: [entry("z.jpg")], indexed: 1, embedded: 1, total: 1, model: { ready: false } };
   assert.equal(reduce(open, { type: "RESCANNED", view: other, select: "z.jpg" }), open);
   assert.equal(reduce(open, { type: "SCOPED", view: other }), open);
+});
+
+const picks = (session: Session) => [session.browse.selected, session.browse.picked];
+
+test("⌘-click adds to the picked set and takes out again, never down to nothing", () => {
+  const two = reduce(open, { type: "PICK_TOGGLE", relPath: "p/c.jpg" });
+  assert.deepEqual(picks(two), ["p/c.jpg", ["a.jpg", "p/c.jpg"]], "the clicked file takes the focus");
+  const one = reduce(two, { type: "PICK_TOGGLE", relPath: "p/c.jpg" });
+  assert.deepEqual(picks(one), ["a.jpg", []], "back to one file, which is a plain selection");
+  assert.equal(reduce(one, { type: "PICK_TOGGLE", relPath: "a.jpg" }), one, "the last file stays");
+});
+
+test("⇧-click picks the run from the focus and redraws it from the same anchor", () => {
+  const ran = reduce(reduce(open, { type: "SELECT", relPath: "b.jpg" }), { type: "PICK_RANGE", relPath: "p/c.jpg" });
+  assert.deepEqual(picks(ran), ["b.jpg", ["b.jpg", "p/c.jpg"]]);
+  const back = reduce(ran, { type: "PICK_RANGE", relPath: "a.jpg" });
+  assert.deepEqual(picks(back), ["b.jpg", ["a.jpg", "b.jpg"]]);
+  assert.deepEqual(picks(reduce(back, { type: "SELECT", relPath: "p/c.jpg" })), ["p/c.jpg", []], "a plain click starts over");
+});
+
+test("deleting picked files moves the focus past the whole run", () => {
+  const all = reduce(open, { type: "PICK", relPaths: ["a.jpg", "b.jpg"] });
+  const removed = reduce(all, { type: "ENTRIES_REMOVED", relPaths: ["a.jpg", "b.jpg"] });
+  assert.deepEqual(picks(removed), ["p/c.jpg", []]);
+  assert.deepEqual(removed.browse.results.paths, ["p/c.jpg"]);
+});
+
+test("a search that drops picked files keeps the rest picked", () => {
+  const all = reduce(open, { type: "PICK", relPaths: ["a.jpg", "b.jpg", "p/c.jpg"] });
+  const started = reduce(all, { type: "SEARCH_STARTED", quiet: false });
+  const landed = reduce(started, { type: "RESULTS", request: started.browse.request, response: response(["b.jpg", "p/c.jpg"]) });
+  assert.deepEqual(picks(landed), ["b.jpg", ["b.jpg", "p/c.jpg"]]);
+});
+
+test("moved files keep their place in the selection under the new path", () => {
+  const all = reduce(open, { type: "PICK", relPaths: ["a.jpg", "b.jpg"] });
+  const moved = reduce(all, { type: "ENTRIES_MOVED", moved: [{ from: "a.jpg", to: "p/a.jpg" }] });
+  assert.deepEqual(picks(moved), ["p/a.jpg", ["p/a.jpg", "b.jpg"]]);
+  assert.deepEqual(moved.browse.results.paths, ["p/a.jpg", "b.jpg", "p/c.jpg"]);
+});
+
+test("the duplicates view lists copies by group, and a group with one copy left goes", () => {
+  const groups = [
+    { paths: ["a.jpg", "b.jpg"], exact: true },
+    { paths: ["p/c.jpg", "p/d.jpg", "p/e.jpg"], exact: false },
+  ];
+  const shown = run([{ type: "DUPLICATES_REQUESTED" }, { type: "DUPLICATES_RESULTS", groups }], reduce(open, { type: "SELECT", relPath: "x.jpg" }));
+  assert.equal(shown.browse.selected, "a.jpg", "the focus moves onto the wall, to the first file to keep");
+  assert.deepEqual(extraCopies(groups), ["b.jpg", "p/d.jpg", "p/e.jpg"]);
+  const extras = reduce(shown, { type: "PICK", relPaths: extraCopies(groups) });
+  const removed = reduce(extras, { type: "ENTRIES_REMOVED", relPaths: ["b.jpg", "p/d.jpg"] });
+  assert.deepEqual(removed.browse.lens, { kind: "duplicates", groups: [{ paths: ["p/c.jpg", "p/e.jpg"], exact: false }] });
+  assert.deepEqual(picks(removed), ["p/c.jpg", []], "one picked file is no set; the focus lands after the removed run");
 });

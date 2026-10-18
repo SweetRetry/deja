@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { CaretRightIcon, FolderSimpleIcon, ImagesIcon } from "@phosphor-icons/react";
+import { CaretRightIcon, CopyIcon, FolderSimpleIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
-import { patchFilter, clearSimilar } from "@/features/browse/commands";
+import { clearLens, findDuplicates, patchFilter } from "@/features/browse/commands";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -19,7 +19,7 @@ const INDENT = 16;
 const GUTTER = 16;
 
 function openFolder(folder: string) {
-  clearSimilar();
+  clearLens();
   patchFilter({ folder });
 }
 
@@ -34,12 +34,14 @@ function Count({ value }: { value: number }) {
 export function FolderNav() {
   const folders = useSession((s) => s.vault.library?.folders);
   const counts = useSession((s) => s.vault.library?.counts);
-  const active = useSession((s) => s.browse.filter.folder);
+  const lens = useSession((s) => s.browse.lens?.kind ?? null);
+  // A folder row is only active while the wall shows that folder.
+  const active = useSession((s) => (s.browse.lens ? null : s.browse.filter.folder));
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const [shown, setShown] = useState(active);
   if (shown !== active) {
     setShown(active);
-    setToggled((state) => openAncestors(state, active));
+    if (active !== null) setToggled((state) => openAncestors(state, active));
   }
   const rows = useMemo(() => folderRows(folders ?? [], toggled), [folders, toggled]);
   const gutter = rows.some((row) => row.hasChildren) ? GUTTER : 0;
@@ -53,6 +55,12 @@ export function FolderNav() {
               <ImagesIcon aria-hidden />
               <span className="truncate">全部素材</span>
               <Count value={counts?.[""] ?? 0} />
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={lens === "duplicates"} onClick={() => void findDuplicates()}>
+              <CopyIcon aria-hidden />
+              <span className="truncate">重复素材</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

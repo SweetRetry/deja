@@ -1,4 +1,5 @@
 pub mod color;
+pub mod dupes;
 pub mod files;
 pub mod import;
 pub mod meta;
@@ -273,7 +274,9 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "similar" => search::similar(args),
     "entry" => entry(args),
     "reveal" => reveal(args),
-    "trash_entry" => trash_entry(args),
+    "trash_entries" => trash_entries(args),
+    "move_entries" => move_entries(args),
+    "duplicates" => duplicates(),
     "refresh" => refresh(),
     "import" => import(args),
     "undo_import" => undo_import(args),
@@ -476,27 +479,117 @@ fn reveal(args: &Value) -> Result<Value, String> {
   Ok(json!({ "revealed": true }))
 }
 
-/// Moves one file the vault lists to the system Trash and rescans, so the reply
-/// already leaves it out.
-fn trash_entry(args: &Value) -> Result<Value, String> {
-  let rel = args
-    .get("relPath")
-    .and_then(Value::as_str)
-    .ok_or("relPath is required")?
-    .to_string();
+fn rel_paths(args: &Value) -> Result<Vec<String>, String> {
+  serde_json::from_value(args.get("relPaths").cloned().unwrap_or(json!([])))
+    .map_err(|e| format!("relPaths are malformed: {e}"))
+}
+
+/// Only what the vault already lists may be deleted or moved, so the UI cannot
+/// be used to touch arbitrary locations. Checked for every path before any moves.
+fn listed(engine: &Engine, rels: &[String]) -> Result<(), String> {
+  match rels.iter().find(|rel| !engine.files.iter().any(|file| &file.rel_path == *rel)) {
+    Some(rel) => Err(format!("{rel} is not in the vault")),
+    None => Ok(()),
+  }
+}
+
+/// Moves files the vault lists to the system Trash and rescans, so the reply
+/// already leaves them out. A file that fails stops the batch; those before it
+/// are already in the Trash and the reply says which.
+fn trash_entries(args: &Value) -> Result<Value, String> {
+  let rels = rel_paths(args)?;
   let root = {
     let guard = ENGINE.lock().expect("engine lock");
     let engine = guard.as_ref().ok_or("no vault open")?;
-    // Same guard as reveal: only what the vault already lists can be deleted.
-    if !engine.files.iter().any(|file| file.rel_path == rel) {
-      return Err(format!("{rel} is not in the vault"));
-    }
+    listed(engine, &rels)?;
     engine.root.clone()
   };
   let into = std::env::var_os("DEJA_TRASH_DIR").map(PathBuf::from);
-  files::trash(&root.join(&rel), into.as_deref())?;
+  let mut trashed = Vec::new();
+  let mut error = None;
+  for rel in &rels {
+    match files::trash(&root.join(rel), into.as_deref()) {
+      Ok(()) => trashed.push(rel.clone()),
+      Err(e) => {
+        error = Some(e);
+        break;
+      }
+    }
+  }
   // The sidecar stays behind, so putting the file back restores its tags.
-  Ok(json!({ "trashed": rel, "view": refresh()? }))
+  Ok(json!({ "trashed": trashed, "error": error, "view": refresh()? }))
+}
+
+/// Moves files into another vault folder, numbering a name that is taken the
+/// way Finder does. Tags, the thumbnail and the vector go along, so nothing is
+/// derived again. A file already in the folder stays put.
+fn move_entries(args: &Value) -> Result<Value, String> {
+  let rels = rel_paths(args)?;
+  let folder = args.get("folder").and_then(Value::as_str).unwrap_or("").to_string();
+  let mut guard = ENGINE.lock().expect("engine lock");
+  let engine = guard.as_mut().ok_or("no vault open")?;
+  listed(engine, &rels)?;
+  if folder.split('/').any(|part| part == ".." || part.starts_with('.')) {
+    return Err(format!("{folder} is not in the vault"));
+  }
+  let dir = if folder.is_empty() { engine.root.clone() } else { engine.root.join(&folder) };
+  if !dir.is_dir() {
+    return Err(format!("{folder} is not in the vault"));
+  }
+  let mut moved: Vec<(String, String)> = Vec::new();
+  for rel in &rels {
+    let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
+    if parent == folder {
+      continue;
+    }
+    let name = import::unique(&dir, name);
+    let to = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
+    std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
+    let sidecar = meta::meta_path(&engine.root, rel);
+    if sidecar.exists() {
+      let target = meta::meta_path(&engine.root, &to);
+      if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+      }
+      let _ = std::fs::rename(&sidecar, &target);
+    }
+    if let Some(mut computed) = engine.computed.remove(rel) {
+      // The thumbnail is named after the path; one left under the old name
+      // would be picked up by the next file to land there.
+      let thumb = thumb::path_for(&engine.cache_dir, &to);
+      if let Some(old) = computed.thumb_path.as_deref() {
+        if std::fs::rename(old, &thumb).is_ok() {
+          computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+        }
+      }
+      engine.computed.insert(to.clone(), computed);
+    }
+    let _ = engine.vectors.rename(rel, &to);
+    moved.push((rel.clone(), to));
+  }
+  rescan(engine)?;
+  save_cache(&engine.cache_dir, &engine.computed);
+  let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
+  Ok(json!({ "moved": moved, "view": snapshot(engine, "name") }))
+}
+
+/// Copies across the whole vault. Only files whose size another file shares are
+/// read, since only those can be byte copies.
+fn duplicates() -> Result<Value, String> {
+  let guard = ENGINE.lock().expect("engine lock");
+  let engine = guard.as_ref().ok_or("no vault open")?;
+  let entries: Vec<Entry> = engine.files.iter().filter_map(|f| entry_view(engine, &f.rel_path)).collect();
+  let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
+  for file in &engine.files {
+    *sizes.entry(file.size_bytes).or_default() += 1;
+  }
+  let digests: BTreeMap<String, u64> = engine
+    .files
+    .iter()
+    .filter(|file| sizes[&file.size_bytes] > 1)
+    .filter_map(|file| std::fs::read(&file.abs).ok().map(|bytes| (file.rel_path.clone(), color::fnv64(&bytes))))
+    .collect();
+  Ok(json!({ "groups": dupes::groups(&entries, &digests) }))
 }
 
 fn save_meta(args: &Value) -> Result<Value, String> {

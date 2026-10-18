@@ -92,6 +92,11 @@ export type IndexProgress = {
   phase: string;
 };
 
+/** Copies of one picture, the one to keep first. `exact` when every copy has the same bytes. */
+export type DuplicateGroup = { paths: string[]; exact: boolean };
+
+export type Moved = { from: string; to: string };
+
 export type SimilarRow = {
   relPath: string;
   score: number;

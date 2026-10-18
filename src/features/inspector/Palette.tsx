@@ -1,11 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { clearSimilar, patchFilter } from "@/features/browse/commands";
+import { clearLens, patchFilter } from "@/features/browse/commands";
 import type { Entry } from "@/lib/types";
 
-/** Filtering by a color leaves any similar view first, so the filter shows on the wall. */
+/** Filtering by a color leaves any lens first, so the filter shows on the wall. */
 function filterByColor(hex: string) {
-  clearSimilar();
+  clearLens();
   patchFilter({ color: hex });
 }
 

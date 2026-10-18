@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { StarIcon } from "@phosphor-icons/react";
-import { openViewer, select } from "@/features/browse/commands";
+import { CheckIcon, StarIcon } from "@phosphor-icons/react";
+import { clickTile, openViewer, select } from "@/features/browse/commands";
 import { mediaLayoutId } from "@/features/viewer/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fileUrl, thumbUrl } from "@/lib/bridge";
@@ -19,7 +19,11 @@ type Props = {
   width: number;
   height: number;
   selected: boolean;
+  /** One of several files picked for one action. */
+  picked: boolean;
   score: SearchScore | undefined;
+  /** Said under the picture in place of a score: which copy of a group this is. */
+  note?: string;
   /** Scored under the lowest match the user accepts; it stays on the wall, faded. */
   dim: boolean;
   showNames: boolean;
@@ -79,7 +83,9 @@ export const Tile = memo(function Tile({
   width,
   height,
   selected,
+  picked,
   score,
+  note,
   dim,
   showNames,
   root,
@@ -109,12 +115,16 @@ export const Tile = memo(function Tile({
   return (
     <button
       type="button"
-      onClick={() => select(relPath)}
-      onDoubleClick={() => {
+      onClick={(event) => clickTile(relPath, event)}
+      onDoubleClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
         select(relPath);
         openViewer();
       }}
-      onContextMenu={() => select(relPath)}
+      // A right-click inside the picked set keeps it, so the menu acts on all of it.
+      onContextMenu={() => {
+        if (!picked) select(relPath);
+      }}
       onPointerEnter={arm}
       onPointerMove={arm}
       onPointerLeave={stop}
@@ -122,6 +132,7 @@ export const Tile = memo(function Tile({
       data-testid="thumb"
       data-rel-path={relPath}
       data-kind={entry.kind}
+      data-picked={picked ? "true" : undefined}
       style={{ position: "absolute", left: x, top: y, width }}
       data-dim={dim ? "true" : undefined}
       className={cn(
@@ -133,7 +144,9 @@ export const Tile = memo(function Tile({
         style={{ height }}
         className={cn(
           "relative overflow-hidden rounded-md bg-surface-1",
-          selected ? "ring-2 ring-ring ring-offset-2 ring-offset-background" : "group-hover:ring-1 group-hover:ring-border",
+          selected || picked
+            ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
+            : "group-hover:ring-1 group-hover:ring-border",
         )}
       >
         {!entry.indexed ? (
@@ -155,12 +168,24 @@ export const Tile = memo(function Tile({
           <img src={thumbUrl(entry)} alt={entry.name} loading="lazy" className="size-full object-cover" />
         )}
         <Rating rating={entry.rating} className="absolute right-1.5 bottom-1.5" />
+        {picked ? (
+          <span
+            aria-hidden
+            className="absolute top-1.5 left-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"
+          >
+            <CheckIcon size={12} weight="bold" />
+          </span>
+        ) : null}
       </div>
       {/* The footer only exists when it has something to say; a clip and an
           unrated still in browse show nothing under the picture. */}
-      {score || showNames ? (
+      {score || note || showNames ? (
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-          {score ? (
+          {note ? (
+            <span className="shrink-0 tabular-nums text-foreground" data-testid="copy-note">
+              {note}
+            </span>
+          ) : score ? (
             <span className="shrink-0 tabular-nums text-foreground" data-testid="score">
               #{score.rank}
               {score.match != null && ` · 匹配 ${score.match}%`}

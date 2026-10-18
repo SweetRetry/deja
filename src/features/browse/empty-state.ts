@@ -13,9 +13,20 @@ export type EmptyInput = {
   filter: Filter;
   /** Files in the scoped folder before any search or filter. */
   folderTotal: number;
+  /** The lens the wall shows instead of the search, if any. Its bar already
+   *  leads back, so its empty state offers no verb of its own. */
+  lens?: "similar" | "duplicates" | null;
+  /** Every file in the vault, which the duplicates lens compares. */
+  vaultTotal?: number;
 };
 
-export function emptyState({ query, filter, folderTotal }: EmptyInput): EmptyState {
+export function emptyState({ query, filter, folderTotal, lens, vaultTotal = 0 }: EmptyInput): EmptyState {
+  if (lens === "duplicates") {
+    return { title: "没有重复的素材", body: `比对了全部 ${vaultTotal} 项素材，没有内容相同或相近的副本。`, action: null };
+  }
+  if (lens === "similar") {
+    return { title: "没有相似的素材", body: "这张素材在库里没有画面相近的。", action: null };
+  }
   const text = query.trim();
   const { kind, rating, color, width } = narrowing(filter);
   const others = rating > 0 || width > 0;

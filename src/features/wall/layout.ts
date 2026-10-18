@@ -19,6 +19,8 @@ type Options = {
   /** Square tiles in rows (grid) instead of each file's own aspect (masonry). */
   uniform: boolean;
   caption: number;
+  /** Tiles that start a band of their own, below every column: one per group of copies. */
+  breaks?: ReadonlySet<string>;
 };
 
 function aspectOf(entry: Entry): number {
@@ -29,12 +31,19 @@ function aspectOf(entry: Entry): number {
 /** Waterfall: shortest column first, height from the file's own aspect ratio.
  *  Column width stays fractional so the wall fills the row and both margins match.
  *  Square tiles all have one height, so the same rule fills rows left to right. */
-export function layout(entries: Entry[], { width, cell, uniform, caption }: Options): { placed: Placed[]; height: number } {
+export function layout(
+  entries: Entry[],
+  { width, cell, uniform, caption, breaks }: Options,
+): { placed: Placed[]; height: number } {
   const columns = Math.max(1, Math.floor((width + GAP) / (cell + GAP)));
   const columnWidth = (width - GAP * (columns - 1)) / columns || cell;
   const heights = new Array<number>(columns).fill(0);
   const placed: Placed[] = [];
   for (const entry of entries) {
+    if (placed.length > 0 && breaks?.has(entry.relPath)) {
+      // A band's gap is twice a tile's, so the eye reads where a group ends.
+      heights.fill(Math.max(...heights) + GAP);
+    }
     let column = 0;
     for (let index = 1; index < columns; index += 1) {
       if ((heights[index] ?? 0) < (heights[column] ?? 0) - 1) column = index;

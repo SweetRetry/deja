@@ -1,11 +1,13 @@
 import type {
   AppSettings,
+  DuplicateGroup,
   Entry,
   EntryMeta,
   Filter,
   ImportItem,
   ImportResponse,
   IndexProgress,
+  Moved,
   SearchResponse,
   SimilarResponse,
   Sort,
@@ -60,7 +62,11 @@ export const api = {
   similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
   entry: (relPath: string) => call<Entry>("entry", { relPath }),
   reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),
-  trash: (relPath: string) => call<{ trashed: string; view: VaultView }>("trash_entry", { relPath }),
+  /** Stops at the first file that fails; `trashed` lists the ones that went. */
+  trash: (relPaths: string[]) =>
+    call<{ trashed: string[]; error: string | null; view: VaultView }>("trash_entries", { relPaths }),
+  move: (relPaths: string[], folder: string) => call<{ moved: Moved[]; view: VaultView }>("move_entries", { relPaths, folder }),
+  duplicates: () => call<{ groups: DuplicateGroup[] }>("duplicates"),
   selfcheck: () =>
     call<{ enabled: boolean; vault: string | null; out: string | null }>("selfcheck_requested"),
   selfcheckReport: (report: unknown) => call<{ written: string }>("selfcheck_report", { report }),

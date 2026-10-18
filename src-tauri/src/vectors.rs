@@ -136,6 +136,15 @@ impl Vectors {
     )
   }
 
+  /// Carries a file's vector to where it moved, so it is not embedded again.
+  pub fn rename(&self, from: &str, to: &str) -> Result<(), String> {
+    self
+      .conn
+      .execute("UPDATE entries SET rel_path = ?2 WHERE rel_path = ?1", params![from, to])
+      .map(|_| ())
+      .map_err(|e| e.to_string())
+  }
+
   pub fn retain(&self, keep: &[String]) -> Result<(), String> {
     let keep_set: std::collections::BTreeSet<&String> = keep.iter().collect();
     let mut statement = self
