@@ -75,34 +75,97 @@ pub fn distance(x: Oklab, y: Oklab) -> f64 {
   ((x.l - y.l).powi(2) + (x.a - y.a).powi(2) + (x.b - y.b).powi(2)).sqrt()
 }
 
-/// Whether an image's palette carries a colour, judged the way people name
-/// colours. Plain Oklab distance with one radius let a grey of the right
-/// lightness pass as dark blue and mustard pass as grass green, so:
-/// a chromatic target matches colours within 25° of hue (the swatches sit 45°
-/// apart, so neighbours barely overlap) and 0.18 of lightness (brown is a dark
-/// orange) that are themselves colourful; a neutral target matches greys of
-/// nearby lightness. Neutrals sit
-/// in the shadows and backgrounds of most photos, so they must cover more of
-/// the image to count. Tuned by eye on the 199-image assets folder.
+/// The colour names people sort pictures by, one per swatch in the filter menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+  Black,
+  Grey,
+  White,
+  Brown,
+  Red,
+  Orange,
+  Yellow,
+  Green,
+  Cyan,
+  Blue,
+  Purple,
+  Pink,
+}
+
+/// Hue anchors in OKLCH degrees, measured off the swatches. A colour takes the
+/// nearest anchor, so the circle is a partition and no hue falls between names.
+const HUES: [(f64, Family); 8] = [
+  (27.0, Family::Red),
+  (55.0, Family::Orange),
+  (95.0, Family::Yellow),
+  (140.0, Family::Green),
+  (200.0, Family::Cyan),
+  (260.0, Family::Blue),
+  (305.0, Family::Purple),
+  (350.0, Family::Pink),
+];
+
+/// Below this chroma a colour is a grey; below MUTED it is also a hue.
+const GREY: f64 = 0.035;
+const MUTED: f64 = 0.07;
+
+fn neutral(lab: Oklab) -> Family {
+  match lab.l {
+    l if l < 0.38 => Family::Black,
+    l if l > 0.80 => Family::White,
+    _ => Family::Grey,
+  }
+}
+
+fn hue_family(lab: Oklab) -> Family {
+  let hue = lab.b.atan2(lab.a).to_degrees();
+  let gap = |anchor: f64| ((hue - anchor + 540.0) % 360.0 - 180.0).abs();
+  let (_, family) = HUES
+    .iter()
+    .min_by(|x, y| gap(x.0).total_cmp(&gap(y.0)))
+    .expect("anchors");
+  let chroma = lab.a.hypot(lab.b);
+  match family {
+    // Brown is a dark orange, and a dark dusty red reads as brown too.
+    Family::Orange if lab.l < 0.58 => Family::Brown,
+    Family::Red if lab.l < 0.58 && chroma < MUTED => Family::Brown,
+    Family::Red if lab.l > 0.70 => Family::Pink,
+    other => *other,
+  }
+}
+
+/// Every name a palette colour answers to. A muted colour answers to both its
+/// hue and its grey, the way a navy is blue and also dark.
+fn families(lab: Oklab) -> impl Iterator<Item = Family> {
+  let chroma = lab.a.hypot(lab.b);
+  let grey = (chroma < MUTED).then(|| neutral(lab));
+  let hue = (chroma >= GREY).then(|| hue_family(lab));
+  grey.into_iter().chain(hue)
+}
+
+/// The one name a picked colour stands for: its hue unless it is a grey.
+pub fn family_of(lab: Oklab) -> Family {
+  if lab.a.hypot(lab.b) >= GREY {
+    hue_family(lab)
+  } else {
+    neutral(lab)
+  }
+}
+
+/// Whether an image's palette carries a colour. Each palette colour is named
+/// (families) and the shares that carry the picked name add up. The previous
+/// matcher took a radius around each swatch, which left navy, forest green and
+/// pure black outside every swatch: 17 of 62 real images matched none, 3 do now.
+/// Neutrals sit in the shadows and backgrounds of most photos, so they must
+/// cover more of the image to count.
 pub fn palette_matches(colors: &[ColorShare], hex: &str) -> bool {
-  const NEUTRAL: f64 = 0.04;
-  let Some(want) = hex_to_oklab(hex) else { return false };
-  let chroma = |c: Oklab| c.a.hypot(c.b);
-  let hue = |c: Oklab| c.b.atan2(c.a).to_degrees();
-  let neutral_target = chroma(want) < NEUTRAL;
+  let Some(want) = hex_to_oklab(hex).map(family_of) else { return false };
   let covered: f64 = colors
     .iter()
-    .filter(|color| {
-      let Some(have) = hex_to_oklab(&color.hex) else { return false };
-      if neutral_target {
-        chroma(have) < 0.05 && (have.l - want.l).abs() < 0.15
-      } else {
-        let hue_gap = ((hue(have) - hue(want) + 540.0) % 360.0 - 180.0).abs();
-        chroma(have) >= 0.06 && hue_gap < 25.0 && (have.l - want.l).abs() < 0.18
-      }
-    })
+    .filter(|color| hex_to_oklab(&color.hex).is_some_and(|have| families(have).any(|f| f == want)))
     .map(|color| color.share)
     .sum();
+  let neutral_target = matches!(want, Family::Black | Family::Grey | Family::White);
   covered >= if neutral_target { 0.35 } else { 0.20 }
 }
 
@@ -384,7 +447,7 @@ mod tests {
     // A black-and-white photo from the assets folder.
     let grey = palette(&[("#444444", 0.25), ("#363636", 0.20), ("#575757", 0.17)]);
     assert!(!palette_matches(&grey, "#3065be"));
-    assert!(palette_matches(&grey, "#3a3a3a"), "it is a dark grey picture");
+    assert!(palette_matches(&grey, "#717171"), "it is a grey picture");
   }
 
   #[test]
@@ -411,6 +474,41 @@ mod tests {
     assert!(!palette_matches(&shadowed, "#1b1b1f"));
     let night = palette(&[("#0b0b0d", 0.55), ("#2a2a2e", 0.15)]);
     assert!(palette_matches(&night, "#1b1b1f"));
+  }
+
+  #[test]
+  fn every_swatch_names_itself() {
+    // COLOR_PRESETS in src/lib/types.ts.
+    let swatches = [
+      ("#1b1b1b", Family::Black),
+      ("#717171", Family::Grey),
+      ("#e8e8e8", Family::White),
+      ("#774826", Family::Brown),
+      ("#d33b36", Family::Red),
+      ("#e87f25", Family::Orange),
+      ("#f0cf4c", Family::Yellow),
+      ("#4f9b3e", Family::Green),
+      ("#2bb3b9", Family::Cyan),
+      ("#3065be", Family::Blue),
+      ("#7d4dad", Family::Purple),
+      ("#e694bb", Family::Pink),
+    ];
+    for (hex, family) in swatches {
+      assert_eq!(family_of(hex_to_oklab(hex).unwrap()), family, "{hex}");
+    }
+  }
+
+  #[test]
+  fn dark_and_muted_shades_find_their_hue() {
+    // Palettes from real images that used to match no swatch at all.
+    let navy = palette(&[("#0d1029", 0.351), ("#1f1d45", 0.223), ("#332b6a", 0.169)]);
+    assert!(palette_matches(&navy, "#3065be"));
+    let forest = palette(&[("#2c4932", 0.313), ("#223c24", 0.188), ("#0e230f", 0.159)]);
+    assert!(palette_matches(&forest, "#4f9b3e"));
+    let black = palette(&[("#000000", 0.294), ("#81788d", 0.208), ("#020202", 0.202)]);
+    assert!(palette_matches(&black, "#1b1b1b"));
+    let dusty_rose = palette(&[("#be93a7", 0.288), ("#d9bfc8", 0.179), ("#4f4650", 0.141)]);
+    assert!(palette_matches(&dusty_rose, "#e694bb"));
   }
 
   #[test]

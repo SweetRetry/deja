@@ -117,9 +117,9 @@ export const emptyFilter: Filter = {
 
 /**
  * Built in OKLCH: three neutrals by lightness, brown (a dark orange), and eight
- * hues 45° apart. The backend matches a chromatic swatch within 25° of hue, so
- * neighbours barely overlap and every hue lands on some swatch
- * (color::palette_matches).
+ * hues. The backend names every palette colour by its nearest swatch, so each
+ * hue and shade lands on some swatch (color::Family). Each swatch must name
+ * itself; color::tests::every_swatch_names_itself holds that.
  */
 export const COLOR_PRESETS: { hex: string; label: string }[] = [
   { hex: "#1b1b1b", label: "黑" },
