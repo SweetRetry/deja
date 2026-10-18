@@ -192,12 +192,9 @@ test("⌘-click adds to the picked set and takes out again, never down to nothin
   assert.equal(reduce(one, { type: "PICK_TOGGLE", relPath: "a.jpg" }), one, "the last file stays");
 });
 
-test("⇧-click picks the run from the focus and redraws it from the same anchor", () => {
-  const ran = reduce(reduce(open, { type: "SELECT", relPath: "b.jpg" }), { type: "PICK_RANGE", relPath: "p/c.jpg" });
-  assert.deepEqual(picks(ran), ["b.jpg", ["b.jpg", "p/c.jpg"]]);
-  const back = reduce(ran, { type: "PICK_RANGE", relPath: "a.jpg" });
-  assert.deepEqual(picks(back), ["b.jpg", ["a.jpg", "b.jpg"]]);
-  assert.deepEqual(picks(reduce(back, { type: "SELECT", relPath: "p/c.jpg" })), ["p/c.jpg", []], "a plain click starts over");
+test("a plain click starts over from a picked set", () => {
+  const all = reduce(open, { type: "PICK", relPaths: ["a.jpg", "b.jpg"] });
+  assert.deepEqual(picks(reduce(all, { type: "SELECT", relPath: "p/c.jpg" })), ["p/c.jpg", []]);
 });
 
 test("deleting picked files moves the focus past the whole run", () => {

@@ -45,7 +45,7 @@ export type BrowseState = {
   pending: boolean;
   /** The focused file: the inspector shows it, the viewer opens it, keys move it. */
   selected: string | null;
-  /** Files picked with ⌘ or ⇧ for one action. Empty, or two or more that
+  /** Files picked with ⌘ for one action. Empty, or two or more that
    *  include `selected`; `normalize` holds that after every event. */
   picked: string[];
   reveal: Reveal | null;
@@ -197,17 +197,6 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
       if (current.length === 1) return browse;
       const left = current.filter((path) => path !== event.relPath);
       return withPicked(browse, left, browse.selected === event.relPath ? (left.at(-1) ?? null) : browse.selected);
-    }
-
-    case "PICK_RANGE": {
-      const shown = shownPaths(browse) ?? [];
-      const from = browse.selected ? shown.indexOf(browse.selected) : -1;
-      const to = shown.indexOf(event.relPath);
-      if (to < 0) return browse;
-      if (from < 0) return { ...browse, selected: event.relPath, picked: [] };
-      // The focus stays the anchor, so the next ⇧-click redraws from it.
-      const range = shown.slice(Math.min(from, to), Math.max(from, to) + 1);
-      return withPicked(browse, range, browse.selected);
     }
 
     case "PICK":

@@ -43,10 +43,9 @@ export async function findDuplicates() {
   }
 }
 
-/** A click on a tile: ⌘ adds or removes it, ⇧ picks the run to it, plain selects it alone. */
-export function clickTile(relPath: string, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
+/** A click on a tile: ⌘ adds or removes it, plain selects it alone. */
+export function clickTile(relPath: string, event: { metaKey: boolean; ctrlKey: boolean }) {
   if (event.metaKey || event.ctrlKey) dispatch({ type: "PICK_TOGGLE", relPath });
-  else if (event.shiftKey) dispatch({ type: "PICK_RANGE", relPath });
   else select(relPath);
 }
 

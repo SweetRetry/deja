@@ -51,8 +51,6 @@ export type SessionEvent =
   | { type: "SELECT"; relPath: string; reveal?: boolean }
   /** ⌘-click: adds the file to the picked set, or takes it out. */
   | { type: "PICK_TOGGLE"; relPath: string }
-  /** ⇧-click: every file on the wall from the focused one to this one. */
-  | { type: "PICK_RANGE"; relPath: string }
   /** Exactly these files, the first one focused; none leaves the focus alone. */
   | { type: "PICK"; relPaths: string[] }
   /** The files went to the Trash: they leave the wall, selection moving on. */

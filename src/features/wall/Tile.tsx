@@ -117,7 +117,7 @@ export const Tile = memo(function Tile({
       type="button"
       onClick={(event) => clickTile(relPath, event)}
       onDoubleClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+        if (event.metaKey || event.ctrlKey) return;
         select(relPath);
         openViewer();
       }}

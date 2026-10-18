@@ -51,19 +51,21 @@ test("⌘ 点按选中两项，右键一次移到废纸篓", async ({ page }) =>
   await expect(panel(page)).not.toHaveAttribute("data-picked-count");
 });
 
-test("⇧ 点按连选，从检视面板移到另一个文件夹，Esc 取消", async ({ page }) => {
+test("⌘ 点按选中三项，Esc 取消，再从检视面板移到另一个文件夹", async ({ page }) => {
   await openVault(page);
-  const order = await page.getByTestId("thumb").evaluateAll((tiles) => tiles.map((t) => t.getAttribute("data-rel-path")));
-  const portraits = order.filter((rel) => rel?.startsWith("摄影/人像/"));
-  expect(portraits).toHaveLength(3);
-  await tile(page, portraits[0]!).click();
-  await tile(page, portraits[2]!).click({ modifiers: ["Shift"] });
-  await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
-
+  const pickPortraits = async () => {
+    await tile(page, ORIGINAL).click();
+    await tile(page, COPY).click({ modifiers: ["ControlOrMeta"] });
+    await tile(page, OTHER).click({ modifiers: ["ControlOrMeta"] });
+    await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
+  };
+  await pickPortraits();
   await page.keyboard.press("Escape");
   await expect(panel(page)).not.toHaveAttribute("data-picked-count");
-  await tile(page, portraits[2]!).click({ modifiers: ["Shift"] });
-  await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
+  // A ⇧-click is a plain click: it picks nothing.
+  await tile(page, COPY).click({ modifiers: ["Shift"] });
+  await expect(panel(page)).not.toHaveAttribute("data-picked-count");
+  await pickPortraits();
 
   await page.getByRole("button", { name: "移动到…" }).click();
   await page.getByRole("menuitem", { name: "海报" }).click();
