@@ -4,16 +4,15 @@ import { useHotkey } from "@/lib/use-hotkey";
 import { extraCopies, type Lens } from "./browse";
 import { clearLens, pick } from "./commands";
 
-type Duplicates = Extract<Lens, { kind: "duplicates" }>;
-
 /** Groups and spare copies, once they are counted. */
-function DuplicatesSummary({ lens }: { lens: Duplicates }) {
-  if (!lens.groups) return <span className="text-xs text-muted-foreground">正在比对…</span>;
-  const extras = extraCopies(lens.groups);
+function DuplicatesSummary() {
+  const groups = useSession((s) => s.browse.copies);
+  if (!groups) return <span className="text-xs text-muted-foreground">正在比对…</span>;
+  const extras = extraCopies(groups);
   return (
     <>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums" data-testid="duplicate-summary">
-        {lens.groups.length === 0 ? "没有重复" : `${lens.groups.length} 组，多出 ${extras.length} 个副本`}
+        {groups.length === 0 ? "没有重复" : `${groups.length} 组，多出 ${extras.length} 个副本`}
       </span>
       {extras.length > 0 ? (
         // Each group keeps its first file: the most pixels, then the higher
@@ -41,7 +40,7 @@ export function LensBar({ lens, leading }: { lens: Lens; leading?: React.ReactNo
       <h2 data-tauri-drag-region className="min-w-0 flex-1 truncate text-sm font-medium">
         {lens.kind === "similar" ? "相似素材" : "重复素材"}
       </h2>
-      {lens.kind === "duplicates" ? <DuplicatesSummary lens={lens} /> : null}
+      {lens.kind === "duplicates" ? <DuplicatesSummary /> : null}
       <Button variant="ghost" onClick={clearLens}>
         返回全部素材
       </Button>

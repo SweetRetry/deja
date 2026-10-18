@@ -223,11 +223,25 @@ test("the duplicates view lists copies by group, and a group with one copy left 
     { paths: ["a.jpg", "b.jpg"], exact: true },
     { paths: ["p/c.jpg", "p/d.jpg", "p/e.jpg"], exact: false },
   ];
-  const shown = run([{ type: "DUPLICATES_REQUESTED" }, { type: "DUPLICATES_RESULTS", groups }], reduce(open, { type: "SELECT", relPath: "x.jpg" }));
+  const shown = run(
+    [{ type: "DUPLICATES_REQUESTED" }, { type: "DUPLICATES_RESULTS", root: "/v", groups }],
+    reduce(open, { type: "SELECT", relPath: "x.jpg" }),
+  );
   assert.equal(shown.browse.selected, "a.jpg", "the focus moves onto the wall, to the first file to keep");
   assert.deepEqual(extraCopies(groups), ["b.jpg", "p/d.jpg", "p/e.jpg"]);
   const extras = reduce(shown, { type: "PICK", relPaths: extraCopies(groups) });
   const removed = reduce(extras, { type: "ENTRIES_REMOVED", relPaths: ["b.jpg", "p/d.jpg"] });
-  assert.deepEqual(removed.browse.lens, { kind: "duplicates", groups: [{ paths: ["p/c.jpg", "p/e.jpg"], exact: false }] });
+  assert.deepEqual(removed.browse.copies, [{ paths: ["p/c.jpg", "p/e.jpg"], exact: false }]);
   assert.deepEqual(picks(removed), ["p/c.jpg", []], "one picked file is no set; the focus lands after the removed run");
+});
+
+test("copies counted in the background open the duplicates view at once", () => {
+  const groups = [{ paths: ["b.jpg", "a.jpg"], exact: true }];
+  const counted = reduce(open, { type: "DUPLICATES_RESULTS", root: "/v", groups });
+  assert.equal(counted.browse.lens, null, "counting alone changes no wall");
+  assert.equal(counted.browse.selected, "a.jpg");
+  const shown = reduce(counted, { type: "DUPLICATES_REQUESTED" });
+  assert.deepEqual(shown.browse.lens, { kind: "duplicates" });
+  assert.equal(shown.browse.selected, "a.jpg", "the focus is already one of the copies");
+  assert.equal(reduce(open, { type: "DUPLICATES_RESULTS", root: "/elsewhere", groups }), open, "another folder's copies are dropped");
 });

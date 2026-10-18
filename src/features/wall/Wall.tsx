@@ -2,10 +2,9 @@ import { useEffect, useMemo } from "react";
 import { useSession, type Session } from "@/app/store";
 import { useRoot, useWallEntries, useWallLoading } from "@/app/selectors";
 import { clearPicked, openViewer, pickAll, select } from "@/features/browse/commands";
-import type { Lens } from "@/features/browse/browse";
 import { belowMatch, THUMB_WIDTH, usePreferences } from "@/features/settings/preferences";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Entry, SearchScore } from "@/lib/types";
+import type { DuplicateGroup, Entry, SearchScore } from "@/lib/types";
 import { useHotkey } from "@/lib/use-hotkey";
 import { cn } from "@/lib/utils";
 import { CAPTION_HEIGHT, layout, step } from "./layout";
@@ -29,10 +28,10 @@ const scrollKeyOf = (s: Session) => {
   return JSON.stringify([query.trim(), filter, sort, ranking, lens?.kind ?? null, lens?.kind === "similar" ? lens.source : null]);
 };
 
-const groupsOf = (s: Session) => (s.browse.lens?.kind === "duplicates" ? s.browse.lens.groups : null);
+const groupsOf = (s: Session) => (s.browse.lens?.kind === "duplicates" ? s.browse.copies : null);
 
 /** Under each copy: whether it is the one to keep, and its size to judge by. */
-function copyNotes(groups: Extract<Lens, { kind: "duplicates" }>["groups"], byPath: Record<string, Entry> | undefined) {
+function copyNotes(groups: DuplicateGroup[] | null, byPath: Record<string, Entry> | undefined) {
   if (!groups || !byPath) return NO_NOTES;
   const notes = new Map<string, string>();
   for (const group of groups) {

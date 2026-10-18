@@ -32,11 +32,15 @@ export async function findSimilar(source: string) {
 
 export const clearLens = () => dispatch({ type: "LENS_CLEARED" });
 
+/** Opens the duplicates view. The copies are usually already counted in the
+ *  background; only a vault not yet compared waits for an answer. */
 export async function findDuplicates() {
   dispatch({ type: "DUPLICATES_REQUESTED" });
+  const root = session().vault.library?.root;
+  if (!root || session().browse.copies) return;
   try {
     const { groups } = await api.duplicates();
-    dispatch({ type: "DUPLICATES_RESULTS", groups });
+    dispatch({ type: "DUPLICATES_RESULTS", root, groups });
   } catch (problem) {
     dispatch({ type: "DUPLICATES_FAILED" });
     toast.error(humanError(problem));

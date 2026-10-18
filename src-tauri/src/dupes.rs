@@ -24,17 +24,32 @@ fn aspect(entry: &Entry) -> Option<f64> {
   }
 }
 
+/// What a still is compared by, parsed once: the vault is compared pair by
+/// pair in the background after every change.
+struct Print {
+  hash: u64,
+  aspect: f64,
+  lead: color::Oklab,
+}
+
 /// Stills only: a clip's hash is its first frame, and many clips open on black.
 /// The lead colour must agree too, which keeps flat pictures of different
 /// colours (all of which hash to zero) apart.
-fn near(a: &Entry, b: &Entry) -> bool {
-  if a.kind != "image" || b.kind != "image" || a.dhash.is_empty() || b.dhash.is_empty() {
-    return false;
+fn print(entry: &Entry) -> Option<Print> {
+  if entry.kind != "image" || entry.dhash.len() != 16 {
+    return None;
   }
-  let same_shape = matches!((aspect(a), aspect(b)), (Some(x), Some(y)) if (x / y - 1.0).abs() < 0.02);
-  let lead = |e: &Entry| e.colors.first().and_then(|c| color::hex_to_oklab(&c.hex));
-  let same_lead = matches!((lead(a), lead(b)), (Some(x), Some(y)) if color::distance(x, y) < 0.1);
-  same_shape && same_lead && color::hamming(&a.dhash, &b.dhash) <= NEAR_BITS
+  Some(Print {
+    hash: u64::from_str_radix(&entry.dhash, 16).ok()?,
+    aspect: aspect(entry)?,
+    lead: entry.colors.first().and_then(|c| color::hex_to_oklab(&c.hex))?,
+  })
+}
+
+fn near(a: &Print, b: &Print) -> bool {
+  (a.hash ^ b.hash).count_ones() <= NEAR_BITS
+    && (a.aspect / b.aspect - 1.0).abs() < 0.02
+    && color::distance(a.lead, b.lead) < 0.1
 }
 
 fn find(parent: &mut [usize], i: usize) -> usize {
@@ -51,13 +66,15 @@ fn find(parent: &mut [usize], i: usize) -> usize {
 /// copies. Within a group the keeper leads: most pixels, then the higher
 /// rating, the bigger file, the older one, the shorter path.
 pub fn groups(entries: &[Entry], digests: &BTreeMap<String, u64>) -> Vec<Group> {
+  let prints: Vec<Option<Print>> = entries.iter().map(print).collect();
   let mut parent: Vec<usize> = (0..entries.len()).collect();
   for i in 0..entries.len() {
     for j in i + 1..entries.len() {
       let (a, b) = (&entries[i], &entries[j]);
       let digest = |e: &Entry| digests.get(&e.rel_path);
       let exact = a.size_bytes == b.size_bytes && digest(a).is_some() && digest(a) == digest(b);
-      if exact || near(a, b) {
+      let alike = matches!((&prints[i], &prints[j]), (Some(x), Some(y)) if near(x, y));
+      if exact || alike {
         let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
         parent[ri] = rj;
       }

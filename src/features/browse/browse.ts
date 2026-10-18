@@ -24,11 +24,9 @@ export type Results = {
   semantic: boolean;
 };
 
-/** A wall that replaces the search's: files like one, or copies of one
- *  picture by group. Null contents while they load. */
-export type Lens =
-  | { kind: "similar"; source: string; paths: string[] | null }
-  | { kind: "duplicates"; groups: DuplicateGroup[] | null };
+/** A wall that replaces the search's: files like one (null paths while they
+ *  load), or the vault's copies by group, which `copies` holds. */
+export type Lens = { kind: "similar"; source: string; paths: string[] | null } | { kind: "duplicates" };
 
 /** A request for the wall to bring a tile into view; the nonce repeats it. */
 export type Reveal = { relPath: string; nonce: number; align: "center" | "nearest" };
@@ -50,6 +48,9 @@ export type BrowseState = {
   picked: string[];
   reveal: Reveal | null;
   lens: Lens | null;
+  /** Copies across the vault, kept fresh in the background so the sidebar can
+   *  count them and the duplicates lens opens at once. Null until compared. */
+  copies: DuplicateGroup[] | null;
   /** The selected file is open full size. */
   viewing: boolean;
 };
@@ -69,6 +70,7 @@ export function initialBrowse(sort: Sort = "name", ranking: Ranking = "semantic"
     picked: [],
     reveal: null,
     lens: null,
+    copies: null,
     viewing: false,
   };
 }
@@ -78,7 +80,7 @@ export function shownPaths(browse: BrowseState): string[] | null {
   const { lens } = browse;
   if (!lens) return browse.results.paths;
   if (lens.kind === "similar") return lens.paths;
-  return lens.groups?.flatMap((group) => group.paths) ?? null;
+  return browse.copies?.flatMap((group) => group.paths) ?? null;
 }
 
 /** What an action applies to: the picked files, else the focused one. */
@@ -90,6 +92,14 @@ export function chosen(browse: BrowseState): string[] {
 /** Every copy but the one to keep, in each group. */
 export function extraCopies(groups: DuplicateGroup[]): string[] {
   return groups.flatMap((group) => group.paths.slice(1));
+}
+
+/** The duplicates wall shows the copies; a focus off it moves to the first file to keep. */
+function focusOnCopies(browse: BrowseState): BrowseState {
+  const groups = browse.copies;
+  if (browse.lens?.kind !== "duplicates" || !groups) return browse;
+  if (groups.some((group) => group.paths.includes(browse.selected ?? ""))) return browse;
+  return { ...browse, selected: groups[0]?.paths[0] ?? browse.selected };
 }
 
 function withPicked(browse: BrowseState, paths: string[], focus: string | null): BrowseState {
@@ -211,7 +221,7 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
       // deleting is usually a sweep, and the pointer should not have to travel.
       const hit = browse.selected !== null && removed.has(browse.selected);
       const at = hit ? gone(shown.slice(0, Math.max(0, shown.indexOf(browse.selected ?? "")))).length : 0;
-      const { lens } = browse;
+      const { lens, copies } = browse;
       return {
         ...browse,
         selected: hit ? (left[at] ?? left[at - 1] ?? null) : browse.selected,
@@ -219,36 +229,27 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
         // A viewer can only show a file that still exists.
         viewing: browse.viewing && !hit,
         results: { ...browse.results, paths: gone(browse.results.paths) },
-        lens:
-          lens?.kind === "similar" && lens.paths
-            ? { ...lens, paths: gone(lens.paths) }
-            : lens?.kind === "duplicates" && lens.groups
-              ? {
-                  ...lens,
-                  // A group down to one file has no copies left.
-                  groups: lens.groups
-                    .map((group) => ({ ...group, paths: gone(group.paths) }))
-                    .filter((group) => group.paths.length > 1),
-                }
-              : lens,
+        lens: lens?.kind === "similar" && lens.paths ? { ...lens, paths: gone(lens.paths) } : lens,
+        // A group down to one file has no copies left.
+        copies:
+          copies
+            ?.map((group) => ({ ...group, paths: gone(group.paths) }))
+            .filter((group) => group.paths.length > 1) ?? null,
       };
     }
 
     case "ENTRIES_MOVED": {
       const to = new Map(event.moved.map((move) => [move.from, move.to]));
       const follow = (path: string) => to.get(path) ?? path;
-      const { lens } = browse;
+      const { lens, copies } = browse;
       return {
         ...browse,
         selected: browse.selected && follow(browse.selected),
         picked: browse.picked.map(follow),
         results: { ...browse.results, paths: browse.results.paths.map(follow) },
         lens:
-          lens?.kind === "similar"
-            ? { ...lens, source: follow(lens.source), paths: lens.paths?.map(follow) ?? null }
-            : lens?.kind === "duplicates" && lens.groups
-              ? { ...lens, groups: lens.groups.map((group) => ({ ...group, paths: group.paths.map(follow) })) }
-              : lens,
+          lens?.kind === "similar" ? { ...lens, source: follow(lens.source), paths: lens.paths?.map(follow) ?? null } : lens,
+        copies: copies?.map((group) => ({ ...group, paths: group.paths.map(follow) })) ?? null,
       };
     }
 
@@ -281,22 +282,14 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
       return { ...browse, lens: null };
 
     case "DUPLICATES_REQUESTED":
-      return { ...browse, lens: { kind: "duplicates", groups: null }, picked: [], viewing: false };
+      return focusOnCopies({ ...browse, lens: { kind: "duplicates" }, picked: [], viewing: false });
 
     case "DUPLICATES_RESULTS":
-      if (browse.lens?.kind !== "duplicates") return browse;
-      // The inspector follows the wall: a focus the copies do not include moves
-      // to the first file to keep.
-      return {
-        ...browse,
-        lens: { kind: "duplicates", groups: event.groups },
-        selected: event.groups.some((group) => group.paths.includes(browse.selected ?? ""))
-          ? browse.selected
-          : (event.groups[0]?.paths[0] ?? browse.selected),
-      };
+      return focusOnCopies({ ...browse, copies: event.groups });
 
     case "DUPLICATES_FAILED":
-      return browse.lens?.kind === "duplicates" ? { ...browse, lens: null } : browse;
+      // Copies already on hand still show; with none the lens has nothing to say.
+      return browse.lens?.kind === "duplicates" && !browse.copies ? { ...browse, lens: null } : browse;
 
     case "LENS_CLEARED":
       return browse.lens ? { ...browse, lens: null, picked: [] } : browse;

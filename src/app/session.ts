@@ -19,6 +19,9 @@ export function reduce(session: Session, event: SessionEvent): Session {
   if ((event.type === "RESCANNED" || event.type === "SCOPED") && event.view.root !== session.vault.library?.root) {
     return session;
   }
+  if (event.type === "DUPLICATES_RESULTS" && event.root !== session.vault.library?.root) {
+    return session;
+  }
   const vault = reduceVault(session.vault, event);
   const browse = reduceBrowse(session.browse, event);
   return vault === session.vault && browse === session.browse ? session : { vault, browse };

@@ -35,6 +35,8 @@ export function FolderNav() {
   const folders = useSession((s) => s.vault.library?.folders);
   const counts = useSession((s) => s.vault.library?.counts);
   const lens = useSession((s) => s.browse.lens?.kind ?? null);
+  // Every file in a group, as the duplicates view shows them; nothing until compared.
+  const copies = useSession((s) => s.browse.copies?.reduce((sum, group) => sum + group.paths.length, 0) ?? null);
   // A folder row is only active while the wall shows that folder.
   const active = useSession((s) => (s.browse.lens ? null : s.browse.filter.folder));
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
@@ -61,6 +63,7 @@ export function FolderNav() {
             <SidebarMenuButton isActive={lens === "duplicates"} onClick={() => void findDuplicates()}>
               <CopyIcon aria-hidden />
               <span className="truncate">重复素材</span>
+              {copies === null ? null : <Count value={copies} />}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

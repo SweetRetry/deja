@@ -62,7 +62,8 @@ export type SessionEvent =
   | { type: "SIMILAR_RESULTS"; source: string; paths: string[] }
   | { type: "SIMILAR_FAILED"; source: string }
   | { type: "DUPLICATES_REQUESTED" }
-  | { type: "DUPLICATES_RESULTS"; groups: DuplicateGroup[] }
+  /** Copies across the folder at `root`; a comparison of the previous folder is dropped. */
+  | { type: "DUPLICATES_RESULTS"; root: string; groups: DuplicateGroup[] }
   | { type: "DUPLICATES_FAILED" }
   /** Back from the similar or the duplicates view to the search. */
   | { type: "LENS_CLEARED" }
