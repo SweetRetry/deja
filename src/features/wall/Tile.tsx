@@ -2,7 +2,8 @@ import { memo, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
 import { clickTile, openViewer, select } from "@/features/browse/commands";
-import { mediaLayoutId } from "@/features/viewer/shared";
+import { useSession } from "@/app/store";
+import { GROW, mediaLayoutId, SWAP } from "@/features/viewer/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fileUrl, thumbUrl } from "@/lib/bridge";
 import type { Entry, SearchScore } from "@/lib/types";
@@ -68,6 +69,29 @@ function ClipPreview({ entry, root }: { entry: Entry; root: string }) {
       preload="auto"
       aria-hidden
       data-testid="tile-preview"
+      className="size-full object-cover"
+    />
+  );
+}
+
+/** Only the selected picture is shared with the viewer, which grows it to full
+ *  size. Motion registers a layoutId on mount, so selecting swaps the element
+ *  instead of flipping the prop. The picture also reappears elsewhere when the
+ *  wall changes view or reflows, and Motion would slide it there; it only
+ *  animates on the render where the viewer closes, so it shrinks back. */
+function SharedThumb({ entry }: { entry: Entry }) {
+  const viewing = useSession((s) => s.browse.viewing);
+  const wasViewing = useRef(viewing);
+  useEffect(() => {
+    wasViewing.current = viewing;
+  });
+  return (
+    <motion.img
+      layoutId={mediaLayoutId(entry.relPath)}
+      transition={viewing || wasViewing.current ? GROW : SWAP}
+      src={thumbUrl(entry)}
+      alt={entry.name}
+      loading="lazy"
       className="size-full object-cover"
     />
   );
@@ -152,16 +176,7 @@ export const Tile = memo(function Tile({
         {!entry.indexed ? (
           <Skeleton className="size-full" />
         ) : selected ? (
-          // Only the selected picture is shared with the viewer, which grows it
-          // to full size. Motion registers a layoutId on mount, so selecting
-          // swaps the element instead of flipping the prop.
-          <motion.img
-            layoutId={mediaLayoutId(relPath)}
-            src={thumbUrl(entry)}
-            alt={entry.name}
-            loading="lazy"
-            className="size-full object-cover"
-          />
+          <SharedThumb entry={entry} />
         ) : preview && root ? (
           <ClipPreview entry={entry} root={root} />
         ) : (

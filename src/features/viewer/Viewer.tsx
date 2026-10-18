@@ -9,11 +9,7 @@ import { closeViewer, select } from "@/features/browse/commands";
 import { fileUrl, thumbUrl } from "@/lib/bridge";
 import type { Entry } from "@/lib/types";
 import { Filmstrip } from "./Filmstrip";
-import { mediaLayoutId } from "./shared";
-
-/** Opening grows the wall tile into place; stepping with the arrows swaps at once. */
-const GROW: Transition = { layout: { duration: 0.24 } };
-const SWAP: Transition = { layout: { duration: 0 } };
+import { GROW, mediaLayoutId, SWAP } from "./shared";
 
 /** Fills the stage without upscaling past the file's own pixels. Without known
  *  dimensions the picture sizes itself and the max-* classes bound it. */
