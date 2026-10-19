@@ -332,7 +332,6 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
       "out": std::env::var("DEJA_SELFCHECK_OUT").ok(),
     })),
     "selfcheck_report" => selfcheck_report(args),
-    "model_status" => Ok(json!({ "ready": model::healthy(), "sidecar": model::sidecar_dir().map(|p| p.to_string_lossy().to_string()) })),
     other => Err(format!("unknown command: {other}")),
   }
 }
