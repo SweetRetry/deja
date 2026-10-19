@@ -2,10 +2,11 @@
 // are what the user asked for and dim the wall while they run; the rest swap
 // results in place.
 import { toast } from "sonner";
-import { RANKING_KEY, SORT_KEY, dispatch, session, watch } from "@/app/store";
+import { RANKING_KEY, SORT_KEY, dispatch, session, watch, type Session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
+import { classify, type SearchInputs } from "./search-intent";
 
 const DEBOUNCE = 160;
 
@@ -42,42 +43,37 @@ function countCopies(): () => void {
   );
 }
 
+const selectInputs = (s: Session) =>
+  [
+    s.vault.library?.root ?? null,
+    s.browse.query,
+    s.browse.filter,
+    s.browse.sort,
+    s.browse.ranking,
+    s.vault.settings?.semantic ?? false,
+    s.vault.modelEpoch,
+    s.vault.revision,
+  ] as const;
+
+const inputsOf = ([root, query, filter, sort, ranking, semantic, modelEpoch, revision]: ReturnType<
+  typeof selectInputs
+>): SearchInputs => ({ root, query, filter, sort, ranking, semantic, modelEpoch, revision });
+
 export function startSearch(): () => void {
   const stopSearch = watch(
-    (s) =>
-      [
-        s.vault.library?.root ?? null,
-        s.browse.query,
-        s.browse.filter,
-        s.browse.sort,
-        s.browse.ranking,
-        s.vault.settings?.semantic ?? false,
-        s.vault.modelEpoch,
-        s.vault.revision,
-      ] as const,
+    selectInputs,
     (next, previous) => {
-      const [root] = next;
-      if (!root) return;
+      if (!next[0]) return;
       // A newly opened folder already shows its files, so its first search is
       // quiet too; it applies the stored sort and counts the color swatches.
-      const asked =
-        previous !== null &&
-        previous[0] === root &&
-        next.slice(1, 5).some((value, index) => !Object.is(value, previous[index + 1]));
       // Picking a folder in the sidebar is navigation, not typing: it searches
       // at once and swaps the wall without dimming it first.
-      const navigated =
-        asked &&
-        next[1] === previous[1] &&
-        next[3] === previous[3] &&
-        next[4] === previous[4] &&
-        next[2].folder !== previous[2].folder &&
-        JSON.stringify({ ...next[2], folder: "" }) === JSON.stringify({ ...previous[2], folder: "" });
-      if (navigated) {
+      const intent = classify(previous && inputsOf(previous), inputsOf(next));
+      if (intent === "navigated") {
         void search(true);
         return;
       }
-      const timer = setTimeout(() => void search(!asked), DEBOUNCE);
+      const timer = setTimeout(() => void search(intent === "quiet"), DEBOUNCE);
       return () => clearTimeout(timer);
     },
   );
