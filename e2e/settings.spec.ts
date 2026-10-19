@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openFolder } from "./helpers";
 
-const API = "http://127.0.0.1:5177/api";
+// Relative to baseURL: vite proxies /api to the e2e backend.
+const API = "/api";
 const DEFAULTS = { semantic: true, modelIdleSecs: 300 };
 
 async function openVault(page: Page) {
