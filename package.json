@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "e2e": "npm run e2e:build && playwright test",
+    "e2e:slow": "DEJA_E2E_SLOW=1 playwright test",
     "tauri": "tauri",
     "install:app": "sh scripts/install-app.sh",
     "e2e:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin deja-e2e --features e2e",
