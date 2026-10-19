@@ -1,5 +1,6 @@
 // Where the welcome table puts its prints. Pure, so the geometry can be
 // asserted without rendering.
+import { columnsFor, GAP, WALL_PAD } from "../wall/layout.ts";
 
 /** A print's place in the stack: offsets in units of the stack's spread, and a tilt in degrees. */
 export type Spot = { dx: number; dy: number; rotate: number };
@@ -34,18 +35,19 @@ export function inStack(point: { x: number; y: number }, size: Size) {
 }
 
 /**
- * The center and side of the wall skeleton's `index`th square, in the
- * skeleton's own box: px-6 pt-16, `gap-4`, columns of at least `cell`.
+ * The center and side of the wall skeleton's `index`th square, in the wall's
+ * scroll box: inside WALL_PAD, GAP apart, columns of at least `cell`.
  * The prints land here as the folder opens.
  */
 export function skeletonSlot(index: number, { width, cell }: { width: number; cell: number }) {
-  const gap = 16;
-  const inner = width - 48;
-  const columns = Math.max(1, Math.floor((inner + gap) / (cell + gap)));
-  const side = (inner - gap * (columns - 1)) / columns;
+  const { columns, side } = columnsFor(width - 2 * WALL_PAD.x, cell);
   const column = index % columns;
   const row = Math.floor(index / columns);
-  return { x: 24 + column * (side + gap) + side / 2, y: 64 + row * (side + gap) + side / 2, side };
+  return {
+    x: WALL_PAD.x + column * (side + GAP) + side / 2,
+    y: WALL_PAD.top + row * (side + GAP) + side / 2,
+    side,
+  };
 }
 
 /** Every skeleton slot that shows on a table of this size. */

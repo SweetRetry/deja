@@ -22,7 +22,7 @@ test("a print thrown far from the stack no longer belongs to it", () => {
   assert.equal(inStack({ x: 200, y: 800 }, window), false);
 });
 
-test("slots match the skeleton grid: px-6 pt-16, gap-4, columns of at least the cell", () => {
+test("slots match the skeleton grid: 24 by 64 padding, 16 gap, columns of at least the cell", () => {
   // 1440 − 48 = 1392 wide fits 7 columns of at least 168 with 16 between: (1392 − 96) / 7.
   const side = 1296 / 7;
   assert.deepEqual(skeletonSlot(0, { width: 1440, cell: 168 }), { x: 24 + side / 2, y: 64 + side / 2, side });

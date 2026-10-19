@@ -3,6 +3,8 @@
 import type { Entry } from "../../lib/types.ts";
 
 export const GAP = 16;
+/** The scroll box's padding around the tiles: `x` on each side, `top` under the toolbar. */
+export const WALL_PAD = { x: 24, top: 64 };
 export const CAPTION_HEIGHT = 24;
 const MIN_HEIGHT = 48;
 
@@ -28,6 +30,13 @@ function aspectOf(entry: Entry): number {
   return 1;
 }
 
+/** How many columns of at least `cell` fit in `width` with GAP between them,
+ *  and how wide each is once they stretch to fill it. */
+export function columnsFor(width: number, cell: number): { columns: number; side: number } {
+  const columns = Math.max(1, Math.floor((width + GAP) / (cell + GAP)));
+  return { columns, side: (width - GAP * (columns - 1)) / columns };
+}
+
 /** Waterfall: shortest column first, height from the file's own aspect ratio.
  *  Column width stays fractional so the wall fills the row and both margins match.
  *  Square tiles all have one height, so the same rule fills rows left to right. */
@@ -35,8 +44,8 @@ export function layout(
   entries: Entry[],
   { width, cell, uniform, caption, breaks }: Options,
 ): { placed: Placed[]; height: number } {
-  const columns = Math.max(1, Math.floor((width + GAP) / (cell + GAP)));
-  const columnWidth = (width - GAP * (columns - 1)) / columns || cell;
+  const { columns, side } = columnsFor(width, cell);
+  const columnWidth = side || cell;
   const heights = new Array<number>(columns).fill(0);
   const placed: Placed[] = [];
   for (const entry of entries) {

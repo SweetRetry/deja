@@ -7,14 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DuplicateGroup, Entry, SearchScore } from "@/lib/types";
 import { useHotkey } from "@/lib/use-hotkey";
 import { cn } from "@/lib/utils";
-import { CAPTION_HEIGHT, layout, step } from "./layout";
+import { CAPTION_HEIGHT, GAP, layout, step, WALL_PAD } from "./layout";
 import { Tile } from "./Tile";
 import { TileMenu } from "./TileMenu";
 import { useReveal } from "./use-reveal";
 import { useViewport } from "./use-viewport";
 
-/** px-6 on both sides of the scroll container. */
-const PADDING_X = 48;
 const OVERSCAN = 600;
 const NO_SCORES: Record<string, SearchScore> = {};
 const NO_NOTES = new Map<string, string>();
@@ -48,8 +46,8 @@ function copyNotes(groups: DuplicateGroup[] | null, byPath: Record<string, Entry
 function WallSkeleton({ cell }: { cell: number }) {
   return (
     <div
-      className="grid grid-cols-(--columns) content-start gap-4"
-      style={{ "--columns": `repeat(auto-fill, minmax(${cell}px, 1fr))` } as React.CSSProperties}
+      className="grid grid-cols-(--columns) content-start"
+      style={{ gap: GAP, "--columns": `repeat(auto-fill, minmax(${cell}px, 1fr))` } as React.CSSProperties}
       aria-busy
     >
       {Array.from({ length: 12 }, (_, index) => (
@@ -90,7 +88,7 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
   const { placed, height } = useMemo(
     () =>
       layout(entries, {
-        width: Math.max(0, box.width - PADDING_X),
+        width: Math.max(0, box.width - 2 * WALL_PAD.x),
         cell,
         uniform: mode === "grid",
         caption: CAPTION_HEIGHT,
@@ -126,7 +124,8 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
           being laid out once at zero width and resized on the next frame. */}
       <div
         ref={attach}
-        className="min-h-0 flex-1 overflow-y-auto px-6 pt-16 pb-4"
+        className="min-h-0 flex-1 overflow-y-auto pb-4"
+        style={{ paddingInline: WALL_PAD.x, paddingTop: WALL_PAD.top }}
         data-testid="grid"
         data-layout={mode}
       >
