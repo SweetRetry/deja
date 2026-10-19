@@ -429,10 +429,68 @@ fn watch_folder(root: &Path) {
   });
 }
 
+/// Carries what is keyed by a file's path to where the file went: its sidecar,
+/// the cached derivations with the thumbnail, and the vector.
+fn carry(engine: &mut Engine, from: &str, to: &str) {
+  let sidecar = meta::meta_path(&engine.root, from);
+  let target = meta::meta_path(&engine.root, to);
+  if sidecar.exists() {
+    if let Some(parent) = target.parent() {
+      let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::rename(&sidecar, &target);
+  }
+  if let Some(mut computed) = engine.computed.remove(from) {
+    // The thumbnail is named after the path; one left under the old name
+    // would be picked up by the next file to land there.
+    let thumb = thumb::path_for(&engine.cache_dir, to);
+    if let Some(old) = computed.thumb_path.as_deref() {
+      if std::fs::rename(old, &thumb).is_ok() {
+        computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+      }
+    }
+    engine.computed.insert(to.to_string(), computed);
+  }
+  let _ = engine.vectors.rename(from, to);
+}
+
+/// Files that moved while the app was not the one moving them (Finder, a
+/// shell). A rename keeps a file's size and modified time, so a path that
+/// vanished and a path that appeared with the same pair are one file. A pair
+/// shared by several paths on either side is not told apart and stays two.
+fn moved_outside(computed: &BTreeMap<String, Computed>, walked: &[scan::RawFile]) -> Vec<(String, String)> {
+  let present: std::collections::BTreeSet<&str> = walked.iter().map(|f| f.rel_path.as_str()).collect();
+  let mut gone: BTreeMap<(u64, i64), Vec<&String>> = BTreeMap::new();
+  for (rel, c) in computed {
+    if c.modified != 0 && !present.contains(rel.as_str()) {
+      gone.entry((c.size_bytes, c.modified)).or_default().push(rel);
+    }
+  }
+  let mut came: BTreeMap<(u64, i64), Vec<&String>> = BTreeMap::new();
+  for f in walked {
+    if f.modified != 0 && !computed.contains_key(&f.rel_path) {
+      came.entry((f.size_bytes, f.modified)).or_default().push(&f.rel_path);
+    }
+  }
+  gone
+    .into_iter()
+    .filter_map(|(key, from)| match (from.as_slice(), came.get(&key).map(Vec::as_slice)) {
+      ([from], Some([to])) => Some((from.to_string(), to.to_string())),
+      _ => None,
+    })
+    .collect()
+}
+
 /// Walks the whole vault: the tree and the caches follow what is on disk, and
 /// only files in scope become the engine's files.
 fn rescan(engine: &mut Engine) -> Result<(), String> {
   let (walked, dirs) = scan::walk_all(&engine.root);
+  for (from, to) in moved_outside(&engine.computed, &walked) {
+    // Notes already at the new path are the newer ones; the file starts over.
+    if !meta::meta_path(&engine.root, &to).exists() {
+      carry(engine, &from, &to);
+    }
+  }
   let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
   let keep_set: std::collections::BTreeSet<&String> = keep.iter().collect();
   engine.computed.retain(|rel, _| keep_set.contains(rel));
@@ -603,26 +661,7 @@ fn move_entries(args: &Value) -> Result<Value, String> {
         error = Some(format!("move failed: {e}"));
         continue;
       }
-      let sidecar = meta::meta_path(&engine.root, rel);
-      if sidecar.exists() {
-        let target = meta::meta_path(&engine.root, &to);
-        if let Some(parent) = target.parent() {
-          let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::rename(&sidecar, &target);
-      }
-      if let Some(mut computed) = engine.computed.remove(rel) {
-        // The thumbnail is named after the path; one left under the old name
-        // would be picked up by the next file to land there.
-        let thumb = thumb::path_for(&engine.cache_dir, &to);
-        if let Some(old) = computed.thumb_path.as_deref() {
-          if std::fs::rename(old, &thumb).is_ok() {
-            computed.thumb_path = Some(thumb.to_string_lossy().to_string());
-          }
-        }
-        engine.computed.insert(to.clone(), computed);
-      }
-      let _ = engine.vectors.rename(rel, &to);
+      carry(engine, rel, &to);
       moved.push((rel.clone(), to));
     }
     let view = rescanned(engine)?;

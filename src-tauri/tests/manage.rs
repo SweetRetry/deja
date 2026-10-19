@@ -112,6 +112,21 @@ fn copies_are_found_then_moved_and_trashed_in_batches() {
     .expect("move into the new folder");
   assert_eq!(filed["moved"], json!([{ "from": "摄影/风景/海边-小.jpg", "to": "摄影/待整理/海边-小.jpg" }]));
 
+  // A move made in Finder is seen on the next scan: the notes and the derived
+  // work follow the file, found by its size and modified time.
+  let before = vault.join("摄影/人像/黄昏逆光-01.jpg");
+  let after = vault.join("摄影/待整理/黄昏.jpg");
+  let noted = Meta { tags: vec!["逆光".into()], rating: 4, note: "别丢".into(), source: None };
+  dispatch("save_meta", &json!({ "relPath": "摄影/人像/黄昏逆光-01.jpg", "meta": noted })).expect("note");
+  std::fs::rename(&before, &after).unwrap();
+  let seen = dispatch("refresh", &json!({})).expect("refresh");
+  assert_eq!(meta::read(&vault, "摄影/待整理/黄昏.jpg"), noted, "the notes went along");
+  assert!(!meta::meta_path(&vault, "摄影/人像/黄昏逆光-01.jpg").exists(), "none are left behind");
+  let entry = seen["entries"].as_array().unwrap().iter().find(|e| e["relPath"] == "摄影/待整理/黄昏.jpg").unwrap();
+  assert_eq!(entry["indexed"], json!(true), "nothing is derived again");
+  assert!(Path::new(entry["thumbPath"].as_str().unwrap()).exists());
+  assert_eq!(entry["note"], json!("别丢"));
+
   for dir in [&vault, &data, &trash] {
     let _ = std::fs::remove_dir_all(dir);
   }
