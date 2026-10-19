@@ -15,7 +15,6 @@ function entry(relPath: string, width: number | null = 100, height: number | nul
     width,
     height,
     colors: [],
-    dhash: "",
     thumbPath: null,
     indexed: true,
     embedded: false,

@@ -19,7 +19,6 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
     width: 10,
     height: 10,
     colors: [],
-    dhash: "",
     thumbPath: null,
     indexed: false,
     embedded: false,
@@ -34,7 +33,7 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
 const chosen: Scope = { chosen: true, excluded: [], tree: [] };
 
 function view(entries: Entry[], indexed = 0, embedded = 0, scope = chosen): VaultView {
-  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length, model: { ready: false } };
+  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length };
 }
 
 const four = [entry("a.jpg"), entry("b.jpg"), entry("p/c.jpg"), entry("p/q/d.jpg")];
