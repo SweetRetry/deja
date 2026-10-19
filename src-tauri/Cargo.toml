@@ -33,3 +33,7 @@ sqlite-vec = "0.1.9"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 tauri-plugin-dialog = "2.0.0-rc.8"
 trash = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSString"] }

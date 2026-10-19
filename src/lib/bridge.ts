@@ -4,6 +4,7 @@ import type {
   Entry,
   EntryMeta,
   Filter,
+  ClipboardPreview,
   ImportItem,
   ImportResponse,
   IndexProgress,
@@ -53,6 +54,10 @@ export const api = {
   indexSlice: (batch: number) => call<IndexProgress>("index_slice", { batch }),
   refresh: () => call<VaultView>("refresh"),
   importItems: (folder: string, items: ImportItem[]) => call<ImportResponse>("import", { folder, items }),
+  /** The clipboard's change count while it holds a picture, else null. */
+  clipboardImage: () => call<{ change: number | null }>("clipboard_image"),
+  clipboardPreview: () => call<ClipboardPreview>("clipboard_preview"),
+  importClipboard: (folder: string) => call<ImportResponse>("import_clipboard", { folder }),
   undoImport: (relPaths: string[]) => call<{ view: VaultView }>("undo_import", { relPaths }),
   setScope: (excluded: string[]) => call<VaultView>("set_scope", { excluded }),
   takeDirty: () => call<{ dirty: boolean }>("take_dirty"),

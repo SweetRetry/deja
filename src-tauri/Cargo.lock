@@ -549,6 +549,8 @@ dependencies = [
  "base64 0.22.1",
  "miniz_oxide 0.8.9",
  "notify",
+ "objc2-app-kit",
+ "objc2-foundation",
  "rusqlite",
  "serde",
  "serde_json",

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -184,4 +184,44 @@ test("粘贴不含图片的文字，或粘进输入框，都不导入", async ({
   await page.waitForTimeout(300);
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await expect(page.getByTestId("thumb")).toHaveCount(before);
+});
+
+test.describe("剪贴板里的图片", () => {
+  const clip = () => join(process.env.DEJA_DATA_DIR ?? ".e2e-data", "clipboard.png");
+  const offer = (page: Page) => page.getByTestId("clipboard-offer");
+
+  test.afterEach(() => rmSync(clip(), { force: true }));
+
+  test("回到窗口时提示导入，忽略后同一次复制不再提示", async ({ page }) => {
+    await openScratch(page);
+    await page.getByRole("button", { name: /海报/ }).first().click();
+    await expect(offer(page)).toHaveCount(0);
+
+    writeFileSync(clip(), Buffer.from(freshJpeg(), "base64"));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(offer(page)).toContainText("剪贴板里有一张图片");
+    const preview = offer(page).getByRole("img", { name: "剪贴板里的图片" });
+    await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(offer(page)).toContainText("×");
+
+    await offer(page).getByRole("button", { name: "忽略" }).click();
+    await expect(offer(page)).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForTimeout(300);
+    await expect(offer(page)).toHaveCount(0);
+  });
+
+  test("点导入后进入当前文件夹并被选中", async ({ page }) => {
+    await openScratch(page);
+    await page.getByRole("button", { name: /海报/ }).first().click();
+
+    writeFileSync(clip(), Buffer.from(freshJpeg(), "base64"));
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await offer(page).getByRole("button", { name: "导入到「海报」" }).click();
+
+    await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
+    await expect(inspector(page)).toHaveAttribute("data-entry", "海报/剪贴板图片.jpg");
+    expect(existsSync(join(vault, "海报/剪贴板图片.jpg"))).toBe(true);
+    await expect(offer(page)).toHaveCount(0);
+  });
 });

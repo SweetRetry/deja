@@ -1,6 +1,7 @@
 import { useSession } from "@/app/store";
 import { useVaultPath } from "@/app/selectors";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarTrigger } from "@/components/ui/sidebar";
+import { ClipboardOffer } from "@/features/import/ClipboardOffer";
 import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { inTauri } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,7 @@ export function AppSidebar() {
             {/* Keyed by folder so a different library starts with its own expansion state. */}
             {loaded ? <FolderNav key={path} /> : null}
           </SidebarContent>
+          <ClipboardOffer />
         </>
       ) : (
         <SidebarContent />

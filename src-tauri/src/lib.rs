@@ -1,3 +1,4 @@
+pub mod clipboard;
 pub mod color;
 pub mod dupes;
 pub mod files;
@@ -283,6 +284,9 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "duplicates" => duplicates(),
     "refresh" => refresh(),
     "import" => import(args),
+    "clipboard_image" => Ok(json!({ "change": clipboard::change() })),
+    "clipboard_preview" => clipboard_preview(),
+    "import_clipboard" => import_clipboard(args),
     "undo_import" => undo_import(args),
     "set_scope" => set_scope(args),
     "take_dirty" => Ok(json!({ "dirty": DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) })),
@@ -434,8 +438,43 @@ fn import(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
+  import_items(folder, &items)
+}
+
+/// A small png of the clipboard's picture as a data URL, with its pixel size,
+/// for the offer to show before the user takes it.
+fn clipboard_preview() -> Result<Value, String> {
+  use base64::Engine as _;
+  let picture = clipboard::read().ok_or("the clipboard holds no image")?;
+  let dir = data_dir().join("clipboard");
+  std::fs::create_dir_all(&dir).map_err(|e| format!("preview failed: {e}"))?;
+  let source = dir.join(format!("source.{}", import::sniff(&picture.bytes).unwrap_or("png")));
+  let small = dir.join("preview.png");
+  std::fs::write(&source, &picture.bytes).map_err(|e| format!("preview failed: {e}"))?;
+  let (width, height) = files::sips_size(&source);
+  let args = ["-Z", "320", "-s", "format", "png"].map(String::from).into_iter()
+    .chain([source.to_string_lossy().into(), "--out".into(), small.to_string_lossy().into()])
+    .collect::<Vec<_>>();
+  let scaled = files::run("sips", &args).and_then(|_| std::fs::read(&small).ok());
+  let _ = std::fs::remove_file(&source);
+  let _ = std::fs::remove_file(&small);
+  let bytes = scaled.ok_or("preview failed")?;
+  let url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+  Ok(json!({ "url": url, "width": width, "height": height }))
+}
+
+/// The picture on the clipboard, imported the way a dropped one is.
+fn import_clipboard(args: &Value) -> Result<Value, String> {
+  let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
+  use base64::Engine as _;
+  let picture = clipboard::read().ok_or("the clipboard holds no image")?;
+  let url = format!("data:;base64,{}", base64::engine::general_purpose::STANDARD.encode(&picture.bytes));
+  import_items(folder, &[import::Item { url, name: Some("剪贴板图片".into()), source: None }])
+}
+
+fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
   let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
-  let imported = import::import_into(&root, folder, &items)?;
+  let imported = import::import_into(&root, folder, items)?;
   IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
   Ok(json!({ "imported": imported, "view": refresh()? }))
 }
