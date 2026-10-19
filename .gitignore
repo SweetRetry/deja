@@ -33,3 +33,5 @@ demo/
 .probe
 .env
 .env.*
+
+.claude/worktrees
