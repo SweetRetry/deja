@@ -130,12 +130,8 @@ pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
     "modified" => entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.rel_path.cmp(&b.rel_path))),
     "size" => entries.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes).then(a.rel_path.cmp(&b.rel_path))),
     "rating" => entries.sort_by(|a, b| b.meta.rating.cmp(&a.meta.rating).then(a.rel_path.cmp(&b.rel_path))),
-    _ => entries.sort_by(|a, b| natural_name(a).cmp(&natural_name(b))),
+    _ => entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
   }
-}
-
-fn natural_name(entry: &Entry) -> String {
-  entry.name.to_lowercase()
 }
 
 fn all_entries(engine: &Engine) -> Vec<Entry> {
@@ -189,13 +185,17 @@ pub fn run(args: &Value) -> Result<Value, String> {
   let engine = guard.as_ref().ok_or("no vault open")?;
   // Swatch counts use every filter but colour, so each swatch says how many
   // files picking it would leave.
+  let picked = filter.color.as_deref().filter(|c| !c.is_empty());
   let other_filters = Filter { color: None, ..filter.clone() };
   let base: Vec<Entry> = all_entries(engine).into_iter().filter(|e| passes(e, &other_filters)).collect();
   let color_counts: Vec<usize> = count_colors
     .iter()
     .map(|hex| base.iter().filter(|entry| color::palette_matches(&entry.colors, hex)).count())
     .collect();
-  let pool: Vec<Entry> = base.into_iter().filter(|e| passes(e, &filter)).collect();
+  let pool: Vec<Entry> = base
+    .into_iter()
+    .filter(|e| picked.map_or(true, |hex| color::palette_matches(&e.colors, hex)))
+    .collect();
   let empty = query.is_empty();
   let mut semantic_used = false;
   let semantic_warm_ms = 0u128;
@@ -238,7 +238,7 @@ pub fn run(args: &Value) -> Result<Value, String> {
     semantic_order.sort_by(|a, b| similarity[b].partial_cmp(&similarity[a]).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)));
     semantic_used = !semantic_order.is_empty();
 
-    let order = fuse(&keyword_order, &semantic_order, 400);
+    let order = fuse(&keyword_order, &semantic_order, SEMANTIC_K);
     for (index, rel) in order.iter().enumerate() {
       let matched = similarity.get(rel).map(|cosine| match_percent(*cosine));
       scores.insert(rel.clone(), json!({ "rank": index + 1, "match": matched }));
