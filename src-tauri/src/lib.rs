@@ -97,6 +97,7 @@ pub struct Engine {
   pub root: PathBuf,
   pub cache_dir: PathBuf,
   /// Only the files in scope: browsing, search and indexing all start here.
+  /// Sorted by relative path, as the walk returns them.
   pub files: Vec<scan::RawFile>,
   /// Kept for every walked file, excluded ones too, so bringing a folder back
   /// into scope costs nothing.
@@ -239,7 +240,9 @@ fn entry_from(engine: &Engine, file: &scan::RawFile) -> Entry {
 }
 
 pub fn entry_view(engine: &Engine, rel_path: &str) -> Option<Entry> {
-  let file = engine.files.iter().find(|f| f.rel_path == rel_path)?;
+  // Search builds every entry through here, so a linear find made it quadratic.
+  let index = engine.files.binary_search_by(|f| f.rel_path.as_str().cmp(rel_path)).ok()?;
+  let file = &engine.files[index];
   Some(entry_from(engine, file))
 }
 
