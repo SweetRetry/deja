@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CaretRightIcon, CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
+import { CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
 import { clearLens, createFolder, findDuplicates, moveEntries, patchFilter } from "@/features/browse/commands";
 import { carriesEntries, droppedEntries } from "@/features/browse/drag";
@@ -22,12 +22,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { RollingNumber } from "@/components/ui/rolling-number";
-import { folderRows, openAncestors, visibleFolders, type FolderRow } from "./folder-tree";
-
-const INDENT = 16;
-// Room for the chevron before the folder icon, so rows with and without
-// children line up. A flat library has no chevrons and keeps the room for names.
-const GUTTER = 16;
+import { folderRows, gutter as gutterOf, INDENT, openAncestors, visibleFolders, type FolderRow } from "./folder-tree";
+import { TreeToggle } from "./TreeToggle";
 
 function openFolder(folder: string) {
   clearLens();
@@ -192,7 +188,7 @@ export function FolderNav() {
     [folders, counts, showEmpty, active],
   );
   const rows = useMemo(() => folderRows(listed, toggled), [listed, toggled]);
-  const gutter = rows.some((row) => row.hasChildren) ? GUTTER : 0;
+  const gutter = gutterOf(rows);
   /** The header button makes a top-level folder; a row's menu makes one inside it. */
   const startCreating = (parent: string) => {
     if (parent) setToggled((state) => ({ ...openAncestors(state, parent), [parent]: true }));
@@ -257,19 +253,11 @@ export function FolderNav() {
                 </ContextMenu>
                 {/* After the row in the DOM, so the row stays the first button for this folder. */}
                 {row.hasChildren ? (
-                  <button
-                    type="button"
-                    aria-label={`${row.expanded ? "收起" : "展开"} ${row.name}`}
-                    aria-expanded={row.expanded}
-                    onClick={() => setToggled((state) => ({ ...state, [row.rel]: !row.expanded }))}
-                    style={{ left: 4 + row.depth * INDENT }}
-                    className="absolute top-1.5 flex size-5 items-center justify-center rounded-sm text-muted-foreground ring-sidebar-ring outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
-                  >
-                    <CaretRightIcon
-                      aria-hidden
-                      className={row.expanded ? "size-3 rotate-90 transition-transform" : "size-3 transition-transform"}
-                    />
-                  </button>
+                  <TreeToggle
+                    row={row}
+                    onToggle={() => setToggled((state) => ({ ...state, [row.rel]: !row.expanded }))}
+                    className="top-1.5 ring-sidebar-ring outline-hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  />
                 ) : null}
               </SidebarMenuItem>,
               newRow(row.rel),

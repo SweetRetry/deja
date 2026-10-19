@@ -1,3 +1,9 @@
+/** How far each level of a folder tree steps in, here and in the scope dialog. */
+export const INDENT = 16;
+// Room for the chevron before a row, so rows with and without children line up.
+// A flat tree has no chevrons and keeps the room for names.
+export const GUTTER = 16;
+
 export type FolderRow = {
   rel: string;
   name: string;
@@ -37,16 +43,22 @@ export function folderRows(folders: string[], toggled: Record<string, boolean>):
     });
 }
 
-/** The folders the sidebar lists. With empty ones hidden, the folder being
- *  viewed and those above it stay, so a new folder does not vanish as it opens. */
+/** The chevron room a tree needs: none when no row has children. */
+export function gutter(rows: FolderRow[]): number {
+  return rows.some((row) => row.hasChildren) ? GUTTER : 0;
+}
+
+/** The folders the sidebar lists. With empty ones hidden, the `active` folder
+ *  (the one the wall shows) and those above it stay, so a new folder does not
+ *  vanish as it opens. */
 export function visibleFolders(
   folders: string[],
   counts: Record<string, number>,
   showEmpty: boolean,
-  viewing: string | null,
+  active: string | null,
 ): string[] {
   if (showEmpty) return folders;
-  const kept = viewing === null ? "" : `${viewing}/`;
+  const kept = active === null ? "" : `${active}/`;
   return folders.filter((rel) => (counts[rel] ?? 0) > 0 || kept.startsWith(`${rel}/`));
 }
 

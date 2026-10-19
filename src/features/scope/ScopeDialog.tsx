@@ -1,20 +1,17 @@
 import { useMemo, useRef, useState } from "react";
-import { CaretRightIcon, CircleNotchIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RollingNumber } from "@/components/ui/rolling-number";
-import { folderRows, openAncestors } from "@/features/sidebar/folder-tree";
+import { folderRows, gutter as gutterOf, INDENT, openAncestors } from "@/features/sidebar/folder-tree";
+import { TreeToggle } from "@/features/sidebar/TreeToggle";
 import { closeVault } from "@/features/vault/commands";
 import type { Scope } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { chooseScope, editScope, useScopeEditor } from "./commands";
 import { checks, indexedFiles, normalize, rootFiles, sameScope, selectAll, selectNone, toggle } from "./scope-tree";
-
-// The sidebar's tree geometry, so a folder sits at the same indent in both.
-const INDENT = 16;
-const GUTTER = 16;
 
 const ROOT_LABEL = "根目录中的文件";
 
@@ -49,7 +46,7 @@ function ScopeForm({ scope, onCancel, focus, ...props }: FormProps) {
   const direct = rootFiles(scope.tree);
   const total = indexedFiles(scope.tree, draft);
   const changed = firstRun || !sameScope(draft, scope.excluded);
-  const gutter = rows.some((row) => row.hasChildren) ? GUTTER : 0;
+  const gutter = gutterOf(rows);
 
   async function save() {
     setSaving(true);
@@ -122,19 +119,11 @@ function ScopeForm({ scope, onCancel, focus, ...props }: FormProps) {
               </label>
               {/* After the row in the DOM, so Tab reaches the checkbox first. */}
               {row.hasChildren ? (
-                <button
-                  type="button"
-                  aria-label={`${row.expanded ? "收起" : "展开"} ${row.name}`}
-                  aria-expanded={row.expanded}
-                  onClick={() => setToggled((open) => ({ ...open, [row.rel]: !row.expanded }))}
-                  style={{ left: 4 + row.depth * INDENT }}
-                  className="absolute top-1 flex size-5 items-center justify-center rounded-sm text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <CaretRightIcon
-                    aria-hidden
-                    className={row.expanded ? "size-3 rotate-90 transition-transform" : "size-3 transition-transform"}
-                  />
-                </button>
+                <TreeToggle
+                  row={row}
+                  onToggle={() => setToggled((open) => ({ ...open, [row.rel]: !row.expanded }))}
+                  className="top-1 outline-none hover:bg-accent hover:text-foreground focus-visible:ring-ring"
+                />
               ) : null}
             </li>
           );
