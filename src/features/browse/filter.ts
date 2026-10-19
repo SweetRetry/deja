@@ -1,11 +1,12 @@
 // One place that knows what "filtering" means, so the toolbar chips, the reset
 // button, the empty state and locate all agree.
-import { COLOR_PRESETS, emptyFilter, type Filter } from "../../lib/types.ts";
+import { COLOR_PRESETS, emptyFilter, type Filter, type Kind } from "../../lib/types.ts";
 
 /** Filters the user narrows with; the folder and tag scope the view instead. */
 export function narrowing(filter: Filter) {
+  const kind: Kind | "" = filter.kinds[0] ?? "";
   return {
-    kind: filter.kinds[0] ?? "",
+    kind,
     rating: filter.minRating,
     color: filter.color,
     width: filter.minWidth,

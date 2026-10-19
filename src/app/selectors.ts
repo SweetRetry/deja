@@ -4,12 +4,19 @@
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { shownPaths } from "@/features/browse/browse";
-import { belowMatch, usePreferences } from "@/features/settings/preferences";
+import { isBelowMatch, usePreferences } from "@/features/settings/preferences";
 import { moveTargets } from "@/features/sidebar/folder-tree";
-import type { Entry } from "@/lib/types";
-import { useSession } from "./store";
+import type { Entry, SearchScore } from "@/lib/types";
+import { baseName } from "@/lib/utils";
+import { useSession, type Session } from "./store";
 
 const NONE: Entry[] = [];
+const NO_SCORES: Record<string, SearchScore> = {};
+
+// A lens ranks by its own rule, so the search's scores do not apply to it.
+const scoresOf = (s: Session) => (s.browse.lens ? NO_SCORES : s.browse.results.scores);
+
+export const useScores = () => useSession(scoresOf);
 
 /** The tiles on the wall, in order: the lens when one is up, else the
  *  results, less any the user hides for scoring under the lowest match. */
@@ -20,9 +27,9 @@ export function useWallEntries(): Entry[] {
       const byPath = s.vault.library?.byPath;
       const paths = shownPaths(s.browse);
       if (!byPath || !paths) return NONE;
-      const scores = s.browse.lens ? undefined : s.browse.results.scores;
+      const scores = scoresOf(s);
       return paths.flatMap((path) =>
-        belowMatch(scores?.[path]?.match, hideUnder) ? [] : (byPath[path] ?? []),
+        isBelowMatch(scores?.[path]?.match, hideUnder) ? [] : (byPath[path] ?? []),
       );
     }),
   );
@@ -47,7 +54,7 @@ export const useDropTarget = () =>
   useSession((s) => {
     const root = s.vault.library?.root;
     if (!root) return null;
-    return s.browse.filter.folder.split("/").pop() || root.split("/").pop() || root;
+    return baseName(s.browse.filter.folder, baseName(root, root));
   });
 
 export const useSemanticEnabled = () => useSession((s) => s.vault.settings?.semantic ?? false);
@@ -56,7 +63,7 @@ export const useSemanticEnabled = () => useSession((s) => s.vault.settings?.sema
 export function useMoveTargets() {
   const folders = useSession((s) => s.vault.library?.folders);
   const root = useSession((s) => s.vault.library?.root ?? "");
-  return useMemo(() => moveTargets(folders ?? [], root.split("/").pop() || "根目录"), [folders, root]);
+  return useMemo(() => moveTargets(folders ?? [], baseName(root, "根目录")), [folders, root]);
 }
 
 /** The picked files, in the order they were picked; empty with one file chosen. */

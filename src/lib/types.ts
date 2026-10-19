@@ -7,17 +7,18 @@ export type EntryMeta = {
   source: string | null;
 };
 
+export type Kind = "image" | "video";
+
 export type Entry = EntryMeta & {
   relPath: string;
   name: string;
   ext: string;
-  kind: "image" | "video";
+  kind: Kind;
   sizeBytes: number;
   modified: number;
   width: number | null;
   height: number | null;
   colors: ColorShare[];
-  dhash: string;
   thumbPath: string | null;
   indexed: boolean;
   embedded: boolean;
@@ -46,7 +47,6 @@ export type VaultView = {
   indexed: number;
   embedded: number;
   total: number;
-  model: { ready: boolean };
 };
 
 /** What the backend acts on: the model process. It lives in settings.json
@@ -59,7 +59,7 @@ export type Sort = "name" | "modified" | "size" | "rating";
 export type Ranking = "semantic" | "keyword";
 
 export type Filter = {
-  kinds: string[];
+  kinds: Kind[];
   minWidth: number;
   minRating: number;
   color: string;
@@ -76,7 +76,6 @@ export type SearchResponse = {
   /** Files each COLOR_PRESETS swatch would leave, given the other filters. */
   colorCounts: number[];
   semantic: boolean;
-  warmMs: number;
   tookMs: number;
 };
 
@@ -87,9 +86,7 @@ export type IndexProgress = {
   remaining: number;
   derived: number;
   embeddedNow: number;
-  modelReady: boolean;
   modelError: string | null;
-  phase: string;
 };
 
 /** Copies of one picture, the one to keep first. `exact` when every copy has the same bytes. */
@@ -97,14 +94,7 @@ export type DuplicateGroup = { paths: string[]; exact: boolean };
 
 export type Moved = { from: string; to: string };
 
-export type SimilarRow = {
-  relPath: string;
-  score: number;
-  hashScore: number;
-  vectorScore: number;
-};
-
-export type SimilarResponse = { results: SimilarRow[] };
+export type SimilarResponse = { results: { relPath: string }[] };
 
 /** One dropped item: a `data:` URL for bytes the page read, or the image's web address. */
 export type ImportItem = { url: string; name: string | null; source: string | null };

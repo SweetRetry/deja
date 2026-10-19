@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Segmented } from "@/components/ui/segmented";
-import { COLOR_PRESETS, type Ranking, type Sort } from "@/lib/types";
+import { COLOR_PRESETS, type Kind, type Ranking, type Sort } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { clearFilters, patchFilter, setRanking, setSort } from "./commands";
 import { isFiltering, narrowing } from "./filter";
 
-const KINDS = [
+const KINDS: { label: string; value: Kind | "" }[] = [
   { label: "全部", value: "" },
   { label: "图片", value: "image" },
   { label: "视频", value: "video" },

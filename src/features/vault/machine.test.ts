@@ -19,7 +19,6 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
     width: 10,
     height: 10,
     colors: [],
-    dhash: "",
     thumbPath: null,
     indexed: false,
     embedded: false,
@@ -34,7 +33,7 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
 const chosen: Scope = { chosen: true, excluded: [], tree: [] };
 
 function view(entries: Entry[], indexed = 0, embedded = 0, scope = chosen): VaultView {
-  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length, model: { ready: false } };
+  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length };
 }
 
 const four = [entry("a.jpg"), entry("b.jpg"), entry("p/c.jpg"), entry("p/q/d.jpg")];
@@ -199,4 +198,38 @@ test("a rescan while asking keeps asking, and the answer starts the work", () =>
 test("narrowing the scope later keeps a pause", () => {
   const paused = reduceVault(ready, { type: "PAUSE" });
   assert.equal(reduceVault(paused, { type: "SCOPED", view: view(four.slice(0, 1), 1, 1) }).phase, "paused");
+});
+
+const paths = (vault: VaultState) => Object.keys(vault.library?.byPath ?? {}).sort();
+
+test("a rescan forgets a file that left the disk, so its tags are no longer counted", () => {
+  const tagged = run([
+    { type: "OPEN", path: "/v" },
+    { type: "OPENED", view: view([entry("a.jpg", { tags: ["x"] }), entry("b.jpg")]) },
+  ]);
+  const rescanned = reduceVault(tagged, { type: "RESCANNED", view: view([entry("b.jpg")]) });
+  assert.deepEqual(paths(rescanned), ["b.jpg"]);
+  assert.equal(rescanned.library?.counts[""], 1);
+});
+
+test("excluding a folder from the scope drops its files from the library", () => {
+  const scoped = reduceVault(ready, { type: "SCOPED", view: view(four.slice(0, 2), 2, 2) });
+  assert.deepEqual(paths(scoped), ["a.jpg", "b.jpg"]);
+});
+
+test("a rescan still keeps an edit in flight on a file that stays", () => {
+  const edited = reduceVault(ready, { type: "META_EDITED", relPath: "a.jpg", meta: meta(3) });
+  const rescanned = reduceVault(edited, { type: "RESCANNED", view: view(four.slice(0, 2), 2, 2) });
+  assert.equal(rescanned.library?.byPath["a.jpg"]?.rating, 3);
+  assert.deepEqual(paths(rescanned), ["a.jpg", "b.jpg"]);
+});
+
+test("a search answer adds fresh entries without dropping the files it did not list", () => {
+  const answered = reduceVault(ready, {
+    type: "RESULTS",
+    request: 0,
+    response: { entries: [entry("a.jpg", { rating: 2 })], scores: {}, colorCounts: [], semantic: false, tookMs: 0 },
+  });
+  assert.equal(answered.library?.byPath["a.jpg"]?.rating, 2);
+  assert.deepEqual(paths(answered), ["a.jpg", "b.jpg", "p/c.jpg", "p/q/d.jpg"]);
 });

@@ -1,6 +1,8 @@
+export const messageOf = (problem: unknown) => (problem instanceof Error ? problem.message : String(problem));
+
 /** Backend messages are English and internal; the UI says what happened and what to do next. */
 export function humanError(problem: unknown): string {
-  const message = problem instanceof Error ? problem.message : String(problem);
+  const message = messageOf(problem);
   if (message.includes("is not a folder")) return "所选路径不是文件夹，请选择一个文件夹。";
   if (message.includes("path is required")) return "请输入文件夹路径。";
   if (message.includes("no vault open")) return "尚未打开素材文件夹。";

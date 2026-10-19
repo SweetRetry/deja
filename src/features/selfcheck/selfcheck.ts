@@ -3,6 +3,7 @@
 // check the desktop build without driving the UI by hand.
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api } from "@/lib/bridge";
+import { messageOf } from "@/lib/errors";
 import { emptyFilter, type Entry, type Filter } from "@/lib/types";
 import { openVault } from "@/features/vault/commands";
 
@@ -45,7 +46,7 @@ export async function runSelfCheck(): Promise<void> {
     await api
       .selfcheckReport({
         ok: false,
-        crashed: problem instanceof Error ? `${problem.message}\n${problem.stack ?? ""}` : String(problem),
+        crashed: problem instanceof Error ? `${problem.message}\n${problem.stack ?? ""}` : messageOf(problem),
         at: new Date().toISOString(),
       })
       .catch(() => undefined);
@@ -62,7 +63,7 @@ async function runSteps(): Promise<void> {
     try {
       steps.push({ name, ok: true, detail: await run() });
     } catch (problem) {
-      steps.push({ name, ok: false, detail: problem instanceof Error ? problem.message : String(problem) });
+      steps.push({ name, ok: false, detail: messageOf(problem) });
     }
   };
 

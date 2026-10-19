@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { isTyping } from "@/lib/use-hotkey";
 import { cn } from "@/lib/utils";
 import { useDropTarget } from "@/app/selectors";
 import { importDrop } from "./commands";
-import { isEditable, mayCarryImage, readTransfer } from "./drop";
+import { mayCarryImage, readTransfer } from "./drop";
 import { report } from "./report";
 
 /**
@@ -56,7 +57,7 @@ export function DropImport() {
     // a clipboard with no picture in it is left alone.
     const paste = (event: ClipboardEvent) => {
       const data = event.clipboardData;
-      if (!data || isEditable(event.target) || !mayCarryImage(data.types)) return;
+      if (!data || isTyping(event.target) || !mayCarryImage(data.types)) return;
       event.preventDefault();
       void readTransfer(data).then((items) => {
         if (items.length > 0) report(importDrop(items), items.length, latest.current);

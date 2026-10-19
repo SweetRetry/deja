@@ -1,13 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { clearLens, patchFilter } from "@/features/browse/commands";
+import { filterWall } from "@/features/browse/commands";
 import type { Entry } from "@/lib/types";
-
-/** Filtering by a color leaves any lens first, so the filter shows on the wall. */
-function filterByColor(hex: string) {
-  clearLens();
-  patchFilter({ color: hex });
-}
 
 export function Palette({ entry }: { entry: Entry }) {
   const total = entry.colors.reduce((sum, color) => sum + color.share, 0) || 1;
@@ -23,7 +17,7 @@ export function Palette({ entry }: { entry: Entry }) {
                   <button
                     type="button"
                     aria-label={`按主色 ${color.hex} 筛选`}
-                    onClick={() => filterByColor(color.hex)}
+                    onClick={() => filterWall({ color: color.hex })}
                     className="h-full basis-0 bg-(--swatch) transition-opacity hover:opacity-80"
                     style={{ "--swatch": color.hex, flexGrow: color.share / total } as React.CSSProperties}
                   />

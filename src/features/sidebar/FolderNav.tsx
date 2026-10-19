@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretRightIcon, CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
-import { clearLens, createFolder, findDuplicates, moveEntries, patchFilter } from "@/features/browse/commands";
+import { createFolder, filterWall, findDuplicates, moveEntries } from "@/features/browse/commands";
 import { carriesEntries, droppedEntries } from "@/features/browse/drag";
 import { setPreferences, usePreferences } from "@/features/settings/preferences";
 import { Button } from "@/components/ui/button";
@@ -28,11 +28,6 @@ const INDENT = 16;
 // Room for the chevron before the folder icon, so rows with and without
 // children line up. A flat library has no chevrons and keeps the room for names.
 const GUTTER = 16;
-
-function openFolder(folder: string) {
-  clearLens();
-  patchFilter({ folder });
-}
 
 function Count({ value }: { value: number }) {
   return (
@@ -213,7 +208,7 @@ export function FolderNav() {
       <SidebarGroup>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton isActive={active === ""} onClick={() => openFolder("")}>
+            <SidebarMenuButton isActive={active === ""} onClick={() => filterWall({ folder: "" })}>
               <ImagesIcon aria-hidden />
               <span className="truncate">全部素材</span>
               <Count value={counts?.[""] ?? 0} />
@@ -246,7 +241,7 @@ export function FolderNav() {
                       active={active === row.rel}
                       inset={8 + gutter + row.depth * INDENT}
                       count={counts?.[row.rel] ?? 0}
-                      onOpen={() => openFolder(row.rel)}
+                      onOpen={() => filterWall({ folder: row.rel })}
                       onHover={() => setToggled((state) => (row.hasChildren && !row.expanded ? { ...state, [row.rel]: true } : state))}
                     />
                   </ContextMenuTrigger>
