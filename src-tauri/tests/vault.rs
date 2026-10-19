@@ -51,7 +51,7 @@ fn scans_the_fixture_vault_and_ignores_noise() {
   );
   assert!(!paths.iter().any(|path| path.ends_with("README.md")), "non media is skipped");
   assert!(
-    files.iter().all(|file| file.size_bytes > 0 && file.modified > 0 && file.kind == "image"),
+    files.iter().all(|file| file.size_bytes > 0 && file.modified > 0 && file.kind == scan::Kind::Image),
     "every entry carries size, mtime and kind"
   );
   let _ = std::fs::remove_dir_all(&vault);

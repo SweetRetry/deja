@@ -1,12 +1,29 @@
 use crate::{IMAGE_EXTS, VIDEO_EXTS};
 use std::path::{Path, PathBuf};
 
+/// What a media file is, by its extension.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+  Image,
+  Video,
+}
+
+impl Kind {
+  /// The name the frontend filters and labels by.
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Kind::Image => "image",
+      Kind::Video => "video",
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 pub struct RawFile {
   pub rel_path: String,
   pub name: String,
   pub ext: String,
-  pub kind: String,
+  pub kind: Kind,
   pub size_bytes: u64,
   pub modified: i64,
   pub abs: PathBuf,
@@ -14,11 +31,11 @@ pub struct RawFile {
 
 const IGNORED_DIRS: &[&str] = &["node_modules", "target", "Library", "System"];
 
-fn keep(ext: &str) -> Option<&'static str> {
+fn keep(ext: &str) -> Option<Kind> {
   if IMAGE_EXTS.contains(&ext) {
-    Some("image")
+    Some(Kind::Image)
   } else if VIDEO_EXTS.contains(&ext) {
-    Some("video")
+    Some(Kind::Video)
   } else {
     None
   }
@@ -84,7 +101,7 @@ pub fn walk_all(root: &Path) -> (Vec<RawFile>, Vec<String>) {
         rel_path,
         name,
         ext,
-        kind: kind.to_string(),
+        kind,
         size_bytes,
         modified: modified_ms(&path),
         abs: path,

@@ -1,4 +1,4 @@
-use crate::scan::RawFile;
+use crate::scan::{Kind, RawFile};
 use crate::{color, files, Computed};
 use std::path::{Path, PathBuf};
 
@@ -21,8 +21,8 @@ fn build_thumb(cache_dir: &Path, file: &RawFile, resize: bool) -> Option<PathBuf
   }
   let out = target.to_string_lossy().to_string();
   let src = file.abs.to_string_lossy().to_string();
-  let produced = match file.kind.as_str() {
-    "video" => files::run(
+  let produced = match file.kind {
+    Kind::Video => files::run(
       "ffmpeg",
       &[
         "-y".into(),
@@ -82,9 +82,9 @@ fn analysis_sample(cache_dir: &Path, file: &RawFile, thumb: &Path) -> Option<Vec
 
 /// Everything the viewer and the grid need, derived once and cached.
 pub fn build(cache_dir: &Path, file: &RawFile) -> Computed {
-  let (width, height) = match file.kind.as_str() {
-    "video" => files::ffprobe_size(&file.abs),
-    _ => files::sips_size(&file.abs),
+  let (width, height) = match file.kind {
+    Kind::Video => files::ffprobe_size(&file.abs),
+    Kind::Image => files::sips_size(&file.abs),
   };
   let resize = match (width, height) {
     (Some(w), Some(h)) => w.max(h) > 512,

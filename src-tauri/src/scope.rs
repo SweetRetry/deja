@@ -90,7 +90,7 @@ mod tests {
       rel_path: rel.into(),
       name: rel.rsplit('/').next().unwrap_or(rel).into(),
       ext: "jpg".into(),
-      kind: "image".into(),
+      kind: crate::scan::Kind::Image,
       size_bytes: 1,
       modified: 1,
       abs: PathBuf::from(rel),

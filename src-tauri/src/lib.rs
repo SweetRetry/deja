@@ -221,7 +221,7 @@ fn entry_from(file: &scan::RawFile, computed: Option<&Computed>, root: &Path, ve
     rel_path: file.rel_path.clone(),
     name: file.name.clone(),
     ext: file.ext.clone(),
-    kind: file.kind.clone(),
+    kind: file.kind.as_str().to_string(),
     size_bytes: file.size_bytes,
     modified: file.modified,
     width: computed.and_then(|c| c.width),
