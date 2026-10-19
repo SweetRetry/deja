@@ -224,8 +224,10 @@ pub fn decode_png(bytes: &[u8]) -> Option<Image> {
   if depth != 8 || width == 0 || height == 0 {
     return None;
   }
+  // Type 3 (palette) is refused with the rest: its bytes are PLTE indexes,
+  // not grey levels, and `sips -Z 32` never writes it.
   let channels = match color_type {
-    0 | 3 => 1,
+    0 => 1,
     2 => 3,
     4 => 2,
     6 => 4,
@@ -564,6 +566,17 @@ mod tests {
     assert_eq!((rgb.width, rgb.height, rgb.rgb), (2, 1, vec![1, 2, 3, 4, 5, 6]));
     let rgba = decode_png(&png(6, 2, 1, &[0, 1, 2, 3, 9, 4, 5, 6, 9], &[])).expect("rgba");
     assert_eq!(rgba.rgb, [1, 2, 3, 4, 5, 6]);
+  }
+
+  #[test]
+  fn a_palette_png_is_refused_not_read_as_grey() {
+    // Colour type 3 stores palette indexes, and the decoder carries no PLTE.
+    // Reading the indexes as grey levels gave a near-black palette for a red
+    // and blue picture. sips never writes type 3 for the 32px sample (every
+    // `sips -Z 32` output of a palette PNG came back as type 2), so refusing
+    // takes the same "no sample" path a damaged file takes.
+    let palette = png(3, 2, 1, &[0, 0, 1], &[(b"PLTE", vec![255, 0, 0, 0, 0, 255])]);
+    assert!(decode_png(&palette).is_none());
   }
 
   #[test]
