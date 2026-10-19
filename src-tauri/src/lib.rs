@@ -478,10 +478,9 @@ fn clipboard_preview() -> Result<Value, String> {
   let small = dir.join("preview.png");
   std::fs::write(&source, &picture.bytes).map_err(|e| format!("preview failed: {e}"))?;
   let (width, height) = files::sips_size(&source);
-  let args = ["-Z", "320", "-s", "format", "png"].map(String::from).into_iter()
-    .chain([source.to_string_lossy().into(), "--out".into(), small.to_string_lossy().into()])
-    .collect::<Vec<_>>();
-  let scaled = files::run("sips", &args).and_then(|_| std::fs::read(&small).ok());
+  let args = ["-Z", "320", "-s", "format", "png"].map(std::ffi::OsStr::new);
+  let args = args.into_iter().chain([source.as_os_str(), "--out".as_ref(), small.as_os_str()]);
+  let scaled = files::run("sips", args).and_then(|_| std::fs::read(&small).ok());
   let _ = std::fs::remove_file(&source);
   let _ = std::fs::remove_file(&small);
   let bytes = scaled.ok_or("preview failed")?;
