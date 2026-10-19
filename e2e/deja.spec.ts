@@ -38,7 +38,7 @@ function metaFile(relPath: string) {
 test.afterEach(() => {
   for (const relPath of ["摄影/人像/黄昏逆光-01.jpg", "海报/深色海报.jpg"]) {
     const path = metaFile(relPath);
-    if (existsSync(path) && !relPath.includes("深色登录")) {
+    if (existsSync(path)) {
       const text = readFileSync(path, "utf8");
       // Only remove files this suite created; the seeded fixtures stay.
       if (!text.includes("source:")) rmSync(path, { force: true });

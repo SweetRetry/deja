@@ -2,12 +2,12 @@
 // the promo is as reproducible as the screenshots it is cut from.
 //
 //   npm run shots   # writes .shots/*.png from the real app
-//   npm run promo   # writes docs/promo.mp4 and docs/promo-poster.jpg
+//   npm run promo   # writes docs/promo.mp4
 //
 // The page's timeline is a pure function of t (window.__render), so frame 411
 // is the same picture on every machine and on every run.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
@@ -104,7 +104,6 @@ if (code !== 0) {
 }
 
 await browser.close();
-rmSync(".shots/.promo-frames", { recursive: true, force: true });
 
 // The loop is cut from the encode, so it cannot drift from the film.
 const loop = spawnSync(

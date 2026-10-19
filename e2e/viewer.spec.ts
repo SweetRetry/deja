@@ -1,8 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { openFolder } from "./helpers";
 
-const SHOTS = process.env.REVIEW_DIR;
-
 test("预览底部的缩略图条：居中当前文件，点击跳转，拖动和滚动逐个切换", async ({ page }) => {
   await openFolder(page);
   await expect(page.getByTestId("thumb").first()).toBeVisible();
@@ -37,7 +35,6 @@ test("预览底部的缩略图条：居中当前文件，点击跳转，拖动�
   const box = (await strip.boundingBox())!;
   const mid = (await current.boundingBox())!;
   expect(Math.abs(mid.x + mid.width / 2 - (box.x + box.width / 2))).toBeLessThan(2);
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/filmstrip-first.png` });
 
   await strip.locator(`[data-rel-path="${order[4]}"]`).click();
   await expectAt(4);
@@ -61,5 +58,4 @@ test("预览底部的缩略图条：居中当前文件，点击跳转，拖动�
   await page.mouse.wheel(0, -pitch * 2);
   await expectAt(5);
   await page.waitForTimeout(300);
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/filmstrip-middle.png` });
 });
