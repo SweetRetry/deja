@@ -206,7 +206,11 @@ fn start(timeout: Duration, spawn: &dyn Fn() -> Result<(), String>, healthy: &dy
     }
     State::Stopped | State::Failed => {}
   }
-  spawn()?;
+  if let Err(problem) = spawn() {
+    // Nothing is coming up, so the next caller must not wait for it.
+    transition(Transition::Failed);
+    return Err(problem);
+  }
   let started = Instant::now();
   while started.elapsed() < timeout {
     if healthy() {
@@ -369,6 +373,26 @@ mod tests {
       assert_eq!(spawns.load(SeqCst), 1, "round {round}: one process for eight callers");
       assert_eq!(refresh(&healthy), State::Ready);
     }
+  }
+
+  #[test]
+  fn a_launch_that_fails_is_not_a_start_in_progress() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    reset();
+    let never = || false;
+    let refused = start(Duration::from_millis(300), &|| Err("no python".to_string()), &never);
+    assert_eq!(refused, Err("no python".to_string()));
+    assert_eq!(refresh(&never), State::Failed, "nothing is starting, so nothing is waited on");
+
+    let spawns = AtomicUsize::new(0);
+    let spawn = || {
+      spawns.fetch_add(1, SeqCst);
+      Ok(())
+    };
+    let healthy = || spawns.load(SeqCst) > 0;
+    assert!(start(Duration::from_secs(5), &spawn, &healthy).is_ok(), "the next caller launches again");
+    assert_eq!(spawns.load(SeqCst), 1);
   }
 
   #[test]
