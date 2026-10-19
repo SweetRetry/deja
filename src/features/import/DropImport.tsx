@@ -2,17 +2,54 @@ import { useEffect, useRef, useState } from "react";
 import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { ImportItem } from "@/lib/types";
 import { useDropTarget } from "@/app/selectors";
 import { locate } from "@/features/browse/commands";
 import { importDrop, undoImport } from "./commands";
-import { mayCarryImage, readDrop } from "./drop";
+import { isEditable, mayCarryImage, readTransfer } from "./drop";
+
+/** One import's toast: loading, then its outcome in place, with locate and undo. */
+function runImport(items: ImportItem[], folder: string | null) {
+  if (folder === null) return;
+  const id = toast.loading(`正在导入 ${Math.max(items.length, 1)} 项…`);
+  void importDrop(items).then((result) => {
+    if ("error" in result) {
+      toast.error(result.error, { id });
+      return;
+    }
+    const undo = result.imported;
+    const first = undo[0];
+    toast.success(`已导入 ${undo.length} 项到「${folder}」`, {
+      id,
+      duration: 6000,
+      action: first
+        ? {
+            label: "定位",
+            onClick: (click) => {
+              // Locating keeps the toast, so undo is still one click away.
+              click.preventDefault();
+              locate(first);
+            },
+          }
+        : undefined,
+      cancel: {
+        label: "撤回",
+        onClick: () => {
+          const undoing = toast.loading("正在撤回…");
+          void undoImport(undo).then((error) =>
+            error ? toast.error(error, { id: undoing }) : toast.success("已撤回导入", { id: undoing }),
+          );
+        },
+      },
+    });
+  });
+}
 
 /**
  * Listens on the whole window so an image dragged out of a browser can be let
- * go anywhere. `dragover` repeats while the pointer is held still, so hover is
+ * go anywhere, or pasted with Cmd+V when the page offers no image to drag. `dragover` repeats while the pointer is held still, so hover is
  * "a dragover in the last 150 ms" instead of counting enter and leave pairs,
- * which child elements unbalance. Each drop owns one toast, which turns from
- * loading into its outcome in place.
+ * which child elements unbalance.
  */
 export function DropImport() {
   const target = useDropTarget();
@@ -50,51 +87,31 @@ export function DropImport() {
       if (!accepts(event)) return;
       event.preventDefault();
       end();
-      const folder = latest.current;
-      void readDrop(event.dataTransfer).then(async (items) => {
-        const id = toast.loading(`正在导入 ${Math.max(items.length, 1)} 项…`);
-        const result = await importDrop(items);
-        if ("error" in result) {
-          toast.error(result.error, { id });
-          return;
-        }
-        const undo = result.imported;
-        const first = undo[0];
-        toast.success(`已导入 ${undo.length} 项到「${folder}」`, {
-          id,
-          duration: 6000,
-          action: first
-            ? {
-                label: "定位",
-                onClick: (click) => {
-                  // Locating keeps the toast, so undo is still one click away.
-                  click.preventDefault();
-                  locate(first);
-                },
-              }
-            : undefined,
-          cancel: {
-            label: "撤回",
-            onClick: () => {
-              const undoing = toast.loading("正在撤回…");
-              void undoImport(undo).then((error) =>
-                error ? toast.error(error, { id: undoing }) : toast.success("已撤回导入", { id: undoing }),
-              );
-            },
-          },
-        });
+      void readTransfer(event.dataTransfer).then((items) => runImport(items, latest.current));
+    };
+    // Cmd+V for an image a page would not let go of: "Copy Image" on a CSS
+    // background, a canvas, or a viewer. Text fields keep their own paste, and
+    // a clipboard with no picture in it is left alone.
+    const paste = (event: ClipboardEvent) => {
+      const data = event.clipboardData;
+      if (!data || isEditable(event.target) || !mayCarryImage(data.types)) return;
+      event.preventDefault();
+      void readTransfer(data).then((items) => {
+        if (items.length > 0) runImport(items, latest.current);
       });
     };
     window.addEventListener("dragstart", start);
     window.addEventListener("dragend", stop);
     window.addEventListener("dragover", over);
     window.addEventListener("drop", drop);
+    window.addEventListener("paste", paste);
     return () => {
       end();
       window.removeEventListener("dragstart", start);
       window.removeEventListener("dragend", stop);
       window.removeEventListener("dragover", over);
       window.removeEventListener("drop", drop);
+      window.removeEventListener("paste", paste);
     };
   }, [open]);
 

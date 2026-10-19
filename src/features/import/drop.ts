@@ -31,13 +31,18 @@ function asDataUrl(file: File): Promise<string> {
   });
 }
 
+/** True when a keystroke or paste lands in a field that handles text itself. */
+export function isEditable(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+}
+
 /**
- * Reads what a drop carried. File bytes win when the browser handed them over;
+ * Reads what a drop or a paste carried. File bytes win when the browser handed them over;
  * otherwise the image's own URL, which the backend downloads. A linked image's
  * `text/uri-list` is the link, not the picture, so the markup is asked first.
- * Must be called inside the drop handler: DataTransfer empties afterwards.
+ * Must be called inside the event handler: DataTransfer empties afterwards.
  */
-export function readDrop(data: DataTransfer): Promise<ImportItem[]> {
+export function readTransfer(data: DataTransfer): Promise<ImportItem[]> {
   const image = imageInHtml(data.getData("text/html"));
   const uri = firstUri(data.getData("text/uri-list"));
   const web = [image, uri].find((url) => url?.startsWith("http")) ?? null;

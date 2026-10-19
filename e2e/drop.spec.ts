@@ -142,3 +142,46 @@ test("拖入的内容里没有图片时提示原因", async ({ page }) => {
   });
   await expect(toast(page, "error")).toContainText("拖入的内容里没有图片或视频。");
 });
+
+test("粘贴剪贴板里的图片，进入当前文件夹并被选中", async ({ page }) => {
+  await openScratch(page);
+  await page.getByRole("button", { name: /海报/ }).first().click();
+
+  await page.evaluate((base64) => {
+    const data = new DataTransfer();
+    const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    data.items.add(new File([raw], "image.jpg", { type: "image/jpeg" }));
+    document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, cancelable: true, bubbles: true }));
+  }, freshJpeg());
+
+  await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
+  await expect(inspector(page)).toHaveAttribute("data-entry", "海报/image.jpg");
+  expect(existsSync(join(vault, "海报/image.jpg"))).toBe(true);
+});
+
+test("粘贴不含图片的文字，或粘进输入框，都不导入", async ({ page }) => {
+  await openScratch(page);
+  const before = await page.getByTestId("thumb").count();
+
+  const defaultPrevented = await page.evaluate(() => {
+    const fire = (target: Element, fill: (data: DataTransfer) => void) => {
+      const data = new DataTransfer();
+      fill(data);
+      return !target.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, cancelable: true, bubbles: true }));
+    };
+    const field = document.querySelector("input, textarea");
+    if (!field) throw new Error("no text field on the page");
+    return [
+      fire(document.body, (d) => d.setData("text/plain", "hello")),
+      fire(document.body, (d) => d.setData("text/html", "<p>no picture</p>")),
+      fire(field, (d) => d.setData("text/uri-list", "https://example.com/pic.jpg")),
+    ];
+  });
+
+  // Plain text is left alone, and a text field keeps its own paste. Either way no toast.
+  const [plain, , field] = defaultPrevented;
+  expect([plain, field]).toEqual([false, false]);
+  await page.waitForTimeout(300);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+  await expect(page.getByTestId("thumb")).toHaveCount(before);
+});
