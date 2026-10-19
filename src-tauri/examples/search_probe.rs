@@ -1,6 +1,7 @@
 // Times one keyword search over a synthetic vault of N files, every file with
-// a vector and one in five with a note, then times on their own the two
-// per-file reads each search makes: the note sidecar and the vector lookup.
+// a vector and one in five with a note, then times on their own the note
+// sidecar read each search makes per file, and the per-file vector lookup it
+// used to make against the one batch query (Vectors::embedded) it makes now.
 // Run: cargo run --release --example search_probe -- [files] [scratch dir]
 use deja_lib::{color, dispatch, meta, vectors, Meta};
 use serde_json::json;

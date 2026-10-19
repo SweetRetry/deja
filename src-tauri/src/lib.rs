@@ -219,7 +219,9 @@ fn folders_of(files: &[scan::RawFile], dirs: &[String]) -> Vec<String> {
   set.into_iter().collect()
 }
 
-fn entry_from(engine: &Engine, file: &scan::RawFile) -> Entry {
+/// `embedded` comes from the caller: one batch query for a whole list
+/// (`vectors.embedded`), one lookup for a single file.
+pub(crate) fn entry_from(engine: &Engine, file: &scan::RawFile, embedded: bool) -> Entry {
   let computed = engine.computed.get(&file.rel_path);
   Entry {
     rel_path: file.rel_path.clone(),
@@ -234,16 +236,15 @@ fn entry_from(engine: &Engine, file: &scan::RawFile) -> Entry {
     dhash: computed.map(|c| c.dhash.clone()).unwrap_or_default(),
     thumb_path: computed.and_then(|c| c.thumb_path.clone()),
     indexed: computed.is_some(),
-    embedded: engine.vectors.has(&file.rel_path),
+    embedded,
     meta: meta::read(&engine.root, &file.rel_path),
   }
 }
 
 pub fn entry_view(engine: &Engine, rel_path: &str) -> Option<Entry> {
-  // Search builds every entry through here, so a linear find made it quadratic.
   let index = engine.files.binary_search_by(|f| f.rel_path.as_str().cmp(rel_path)).ok()?;
   let file = &engine.files[index];
-  Some(entry_from(engine, file))
+  Some(entry_from(engine, file, engine.vectors.has(rel_path)))
 }
 
 /// Files the embedder is done with: they have a vector, or they were derived
@@ -255,12 +256,13 @@ fn settled(engine: &Engine) -> usize {
   if !settings::get().semantic {
     return engine.files.len();
   }
+  let embedded = engine.vectors.embedded();
   engine
     .files
     .iter()
     .filter(|file| match engine.computed.get(&file.rel_path) {
       Some(computed) if computed.thumb_path.is_none() => true,
-      _ => engine.vectors.has(&file.rel_path),
+      _ => embedded.contains(&file.rel_path),
     })
     .count()
 }
@@ -290,7 +292,8 @@ fn progress(engine: &Engine) -> Progress {
 /// The vault as the frontend first sees it. `sort` matches what the first
 /// search will answer with, so the wall does not reorder itself once that lands.
 fn snapshot(engine: &Engine, sort: &str) -> Value {
-  let mut entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
+  let embedded = engine.vectors.embedded();
+  let mut entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f, embedded.contains(&f.rel_path))).collect();
   search::sort_static(&mut entries, sort);
   let progress = progress(engine);
   json!({
@@ -660,7 +663,8 @@ fn create_folder(args: &Value) -> Result<Value, String> {
 /// read, since only those can be byte copies.
 fn duplicates() -> Result<Value, String> {
   with_engine(|engine| {
-    let entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
+    let embedded = engine.vectors.embedded();
+    let entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f, embedded.contains(&f.rel_path))).collect();
     let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
     for file in &engine.files {
       *sizes.entry(file.size_bytes).or_default() += 1;

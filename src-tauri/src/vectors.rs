@@ -92,6 +92,16 @@ impl Vectors {
       .is_ok()
   }
 
+  /// Every path that has a vector, in one query. Asking `has` once per file
+  /// cost a search over 10k files ~290 ms (examples/search_probe.rs); this ~2 ms.
+  pub fn embedded(&self) -> std::collections::HashSet<String> {
+    let Ok(mut statement) = self.conn.prepare("SELECT rel_path FROM entries WHERE id IN (SELECT rowid FROM image_vectors)")
+    else {
+      return Default::default();
+    };
+    statement.query_map([], |row| row.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
+  }
+
   pub fn count(&self) -> usize {
     self
       .conn
@@ -210,6 +220,8 @@ mod tests {
     store.insert("a.png", &axis(3)).expect("insert");
 
     assert!(store.has("a.png"));
+    store.row_id("listed-only.png").expect("an entries row without a vector");
+    assert_eq!(store.embedded(), ["a.png".to_string()].into());
     assert_eq!(store.count(), 1);
     assert_eq!(store.vector("a.png").map(|v| v[3]), Some(1.0));
     assert_eq!(store.missing(&["a.png".to_string(), "b.png".to_string()], 10), vec!["b.png".to_string()]);

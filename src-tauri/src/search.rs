@@ -138,11 +138,8 @@ pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
 }
 
 fn all_entries(engine: &Engine) -> Vec<Entry> {
-  engine
-    .files
-    .iter()
-    .map(|file| crate::entry_view(engine, &file.rel_path).expect("entry exists"))
-    .collect()
+  let embedded = engine.vectors.embedded();
+  engine.files.iter().map(|file| crate::entry_from(engine, file, embedded.contains(&file.rel_path))).collect()
 }
 
 const SEMANTIC_K: usize = 400;
@@ -266,7 +263,7 @@ pub fn similar(args: &Value) -> Result<Value, String> {
   let engine = guard.as_ref().ok_or("no vault open")?;
   let target = crate::entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
   let target_image = engine.vectors.vector(&rel);
-  let entries: Vec<Entry> = engine.files.iter().filter_map(|f| crate::entry_view(engine, &f.rel_path)).collect();
+  let entries = all_entries(engine);
   let mut rows: Vec<(String, f64)> = Vec::new();
   for entry in &entries {
     if entry.rel_path == target.rel_path {
