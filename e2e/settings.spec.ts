@@ -1,13 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFolder } from "./helpers";
 
 const API = "http://127.0.0.1:5177/api";
 const DEFAULTS = { semantic: true, modelIdleSecs: 300 };
 
 async function openVault(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill("public/vault");
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page);
   await expect(page.getByTestId("thumb").first()).toBeVisible();
 }
 

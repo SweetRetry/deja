@@ -1,12 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { openFolder } from "./helpers";
 
 const SHOTS = process.env.REVIEW_DIR;
 
 test("预览底部的缩略图条：居中当前文件，点击跳转，拖动和滚动逐个切换", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill("public/vault");
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page);
   await expect(page.getByTestId("thumb").first()).toBeVisible();
   await page.getByTestId("thumb").first().dblclick();
 

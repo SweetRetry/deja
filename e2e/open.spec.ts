@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openFolder } from "./helpers";
 
 // The wall used to be laid out once at zero width and again once measured, and
 // the open painted files in scan order until the first search re-sorted them.
@@ -33,16 +34,9 @@ async function recordFrames(page: Page) {
   });
 }
 
-async function openVault(page: Page) {
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill("public/vault");
-  await page.getByLabel("文件夹路径").press("Enter");
-  await expect(page.getByTestId("thumb").first()).toBeVisible();
-}
-
 test("重新打开上次的文件夹时，三栏位置和素材顺序都不跳动", async ({ page }) => {
-  await page.goto("/");
-  await openVault(page);
+  await openFolder(page);
+  await expect(page.getByTestId("thumb").first()).toBeVisible();
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 
   await recordFrames(page);

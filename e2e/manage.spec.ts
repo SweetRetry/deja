@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, existsSync, statSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, statSync, readdirSync, rmSync, utimesSync } from "node:fs";
 import { join } from "node:path";
+import { openFolder, scratchVault, toast } from "./helpers";
 import { SCRATCH_TRASH } from "./scratch-trash";
 
 // Managing many files at once, on a scratch copy of the fixture vault with a
@@ -10,25 +10,14 @@ const ORIGINAL = "摄影/人像/黄昏逆光-01.jpg";
 const COPY = "摄影/人像/黄昏逆光-02.jpg";
 const OTHER = "摄影/人像/逆光-03.jpg";
 
-let vault = "";
-
-test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "deja-manage-"));
-  cpSync("public/vault", vault, { recursive: true });
+const vault = scratchVault("manage", (path) => {
   // The older of two byte copies is the one to keep; make that one -01.
-  utimesSync(join(vault, ORIGINAL), new Date(2020, 0, 1), new Date(2020, 0, 1));
+  utimesSync(join(path, ORIGINAL), new Date(2020, 0, 1), new Date(2020, 0, 1));
   rmSync(SCRATCH_TRASH, { recursive: true, force: true });
 });
 
-test.afterEach(() => {
-  rmSync(vault, { recursive: true, force: true });
-});
-
 async function openVault(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(vault);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page, vault.path);
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 }
 
@@ -54,10 +43,10 @@ test("⌘ 点按选中两项，右键一次移到废纸篓", async ({ page }) =>
   await page.getByRole("menuitem", { name: "将 2 项移到废纸篓" }).click();
 
   await expect(page.getByTestId("thumb")).toHaveCount(10, { timeout: 500 });
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("2 项素材");
+  await expect(toast(page, "success")).toContainText("2 项素材");
   expect(requests).toHaveLength(1);
   expect(readdirSync(SCRATCH_TRASH).sort()).toEqual(["逆光-03.jpg", "黄昏逆光-01.jpg"].sort());
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("2 项素材");
+  await expect(toast(page, "success")).toContainText("2 项素材");
   await expect(panel(page)).not.toHaveAttribute("data-picked-count");
 });
 
@@ -79,10 +68,10 @@ test("⌘ 点按选中三项，Esc 取消，再从检视面板移到另一个文
 
   await page.getByRole("button", { name: "移动到…" }).click();
   await page.getByRole("menuitem", { name: "海报" }).click();
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("已将 3 项素材移到「海报」");
-  expect(existsSync(join(vault, "海报/逆光-03.jpg"))).toBe(true);
+  await expect(toast(page, "success")).toContainText("已将 3 项素材移到「海报」");
+  expect(existsSync(join(vault.path, "海报/逆光-03.jpg"))).toBe(true);
   // Finder may leave a .DS_Store behind; no picture stays.
-  expect(readdirSync(join(vault, "摄影/人像")).filter((name) => !name.startsWith("."))).toEqual([]);
+  expect(readdirSync(join(vault.path, "摄影/人像")).filter((name) => !name.startsWith("."))).toEqual([]);
   // They stay picked under their new paths, ready for the next action.
   await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
   await expect(page.getByTestId("thumb")).toHaveCount(12);
@@ -104,7 +93,7 @@ test("重复素材按组列出，选中多余副本后移到废纸篓", async ({
 
   await expect(page.getByTestId("duplicate-summary")).toHaveText("没有重复");
   // The tile leaves before Finder answers; the toast is the answer.
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("移到废纸篓");
+  await expect(toast(page, "success")).toContainText("移到废纸篓");
   expect(readdirSync(SCRATCH_TRASH)).toEqual(["黄昏逆光-02.jpg"]);
   await page.getByRole("button", { name: "返回全部素材" }).click();
   await expect(page.getByTestId("thumb")).toHaveCount(11);
@@ -121,7 +110,7 @@ test("侧栏新建文件夹，空文件夹可在侧栏隐藏", async ({ page }) 
 
   // The wall opens the new folder, empty, and its row is the active one.
   await expect(folderRow(page, "待整理")).toHaveAttribute("data-active");
-  expect(statSync(join(vault, "待整理")).isDirectory()).toBe(true);
+  expect(statSync(join(vault.path, "待整理")).isDirectory()).toBe(true);
   await expect(page.getByTestId("thumb")).toHaveCount(0);
 
   // The header button makes a top-level folder from inside another folder too,
@@ -129,7 +118,7 @@ test("侧栏新建文件夹，空文件夹可在侧栏隐藏", async ({ page }) 
   await page.getByRole("button", { name: "新建文件夹" }).click();
   await page.getByLabel("新文件夹名称").fill("海报");
   await page.getByLabel("新文件夹名称").press("Enter");
-  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toContainText("同名");
+  await expect(toast(page, "error")).toContainText("同名");
   await page.getByLabel("新文件夹名称").press("Escape");
   await expect(page.getByLabel("新文件夹名称")).toHaveCount(0);
 
@@ -148,7 +137,7 @@ test("侧栏新建文件夹，空文件夹可在侧栏隐藏", async ({ page }) 
   await page.getByLabel("新文件夹名称").fill("旧稿");
   await page.getByLabel("新文件夹名称").press("Enter");
   await expect(folderRow(page, "旧稿")).toHaveAttribute("data-active");
-  expect(statSync(join(vault, "海报/旧稿")).isDirectory()).toBe(true);
+  expect(statSync(join(vault.path, "海报/旧稿")).isDirectory()).toBe(true);
 
   // The setting and the sidebar menu are one switch.
   await page.getByRole("button", { name: "设置" }).click();
@@ -164,14 +153,14 @@ test("把素材拖到侧栏的文件夹里移动，已选中的一起走", async
   await openVault(page);
   // A tile outside the picked set drags alone.
   await tile(page, OTHER).dragTo(folderRow(page, "海报"));
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("已将「逆光-03.jpg」移到「海报」");
-  expect(existsSync(join(vault, "海报/逆光-03.jpg"))).toBe(true);
+  await expect(toast(page, "success")).toContainText("已将「逆光-03.jpg」移到「海报」");
+  expect(existsSync(join(vault.path, "海报/逆光-03.jpg"))).toBe(true);
 
   await tile(page, "海报/逆光-03.jpg").click();
   await tile(page, ORIGINAL).click({ modifiers: ["ControlOrMeta"] });
   await tile(page, COPY).click({ modifiers: ["ControlOrMeta"] });
   await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
   await tile(page, COPY).dragTo(folderRow(page, "登录页"));
-  await expect(page.locator('[data-sonner-toast][data-type="success"]', { hasText: "已将 3 项素材移到「登录页」" })).toBeVisible();
-  expect(existsSync(join(vault, "UI参考/登录页/逆光-03.jpg"))).toBe(true);
+  await expect(toast(page, "success").filter({ hasText: "已将 3 项素材移到「登录页」" })).toBeVisible();
+  expect(existsSync(join(vault.path, "UI参考/登录页/逆光-03.jpg"))).toBe(true);
 });

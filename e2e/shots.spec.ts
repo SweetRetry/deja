@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { openFolder } from "./helpers";
 
 // The product pictures in the README, and the frames the promo is cut from.
 // Skipped in the normal run: `npm run shots` builds demo/素材库 and starts vite
@@ -16,9 +17,7 @@ test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 const status = (page: Page) => page.getByTestId("index-status");
 
 async function openVault(page: Page) {
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(VAULT);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page, VAULT, { navigate: false });
   await expect(page.getByTestId("thumb").first()).toBeVisible({ timeout: 60_000 });
   await expect(status(page)).toHaveText("索引已完成", { timeout: 240_000 });
 }

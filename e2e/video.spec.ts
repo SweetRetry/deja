@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { openFolder } from "./helpers";
 
 // The demo vault holds photographs only, so the clip is built for this run.
 const DIR = "public/vault/短片";
@@ -29,10 +30,7 @@ test.afterAll(() => {
 
 test("悬停视频时原地播放，移开后回到静帧", async ({ page }) => {
   test.setTimeout(180_000);
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill("public/vault");
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page);
   const tile = page.locator(`[data-rel-path="${REL_PATH}"]`);
   await expect(tile).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("index-status")).toHaveText("索引已完成", { timeout: 150_000 });
