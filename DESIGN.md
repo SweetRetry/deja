@@ -83,7 +83,7 @@ shadcn's default `--radius` (0.625rem) is the base. `rounded-md` (8px) for contr
 
 ## Components
 
-Theme utilities only: no arbitrary values (`bg-[#…]`, `text-[13px]`). A new value goes into the tokens first. Components are shadcn/ui with these deltas, applied once in the component files:
+Theme utilities only: no arbitrary values (`bg-[#…]`, `text-[13px]`). A new value goes into the tokens first. Components are shadcn/ui with these deltas, applied once in the component files, which keep only the parts the app uses (add one back from shadcn when a screen needs it):
 
 - **Card**: no border; `bg-card` alone.
 - **Input, Textarea, Select**: filled `bg-muted` with the `border-input` edge; focus `border-ring` plus a soft ring.

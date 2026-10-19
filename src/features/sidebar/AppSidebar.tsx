@@ -16,7 +16,7 @@ export function AppSidebar() {
   const loaded = useSession((s) => s.vault.library !== null);
 
   return (
-    <Sidebar collapsible="offcanvas">
+    <Sidebar>
       {/* Shares the 48px header line with the toolbar and the inspector; the
           desktop window's traffic lights sit in its left inset. */}
       <div
