@@ -462,7 +462,9 @@ fn import(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
-  import_items(folder, &items)
+  let root = vault_root()?;
+  let imported = import::import_into(&root, folder, &items)?;
+  landed(&root, imported)
 }
 
 /// A small png of the clipboard's picture as a data URL, with its pixel size,
@@ -490,15 +492,16 @@ fn clipboard_preview() -> Result<Value, String> {
 /// The picture on the clipboard, imported the way a dropped one is.
 fn import_clipboard(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
-  use base64::Engine as _;
   let picture = clipboard::read().ok_or("the clipboard holds no image")?;
-  let url = format!("data:;base64,{}", base64::engine::general_purpose::STANDARD.encode(&picture.bytes));
-  import_items(folder, &[import::Item { url, name: Some("剪贴板图片".into()), source: None }])
+  let item = import::Item { url: String::new(), name: Some("剪贴板图片".into()), source: None };
+  let root = vault_root()?;
+  let imported = import::write_into(&root, folder, [Ok((&item, picture.bytes))])?;
+  landed(&root, imported)
 }
 
-fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
-  let root = vault_root()?;
-  let imported = import::import_into(&root, folder, items)?;
+/// Records what an import wrote, so only that can be undone, and answers
+/// with the vault that now lists it.
+fn landed(root: &Path, imported: Vec<String>) -> Result<Value, String> {
   IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
   Ok(json!({ "imported": imported, "view": refresh()? }))
 }

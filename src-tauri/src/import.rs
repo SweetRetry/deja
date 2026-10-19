@@ -160,15 +160,26 @@ pub fn rel_in(folder: &str, name: &str) -> String {
   }
 }
 
-/// Writes each item into `root/folder` and returns the new relative paths.
-/// One bad item does not stop the rest; it fails the call only if nothing landed.
+/// Fetches each item and writes it into `root/folder`, returning the new
+/// relative paths.
 pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<String>, String> {
+  write_into(root, folder, items.iter().map(|item| fetch(&item.url).map(|bytes| (item, bytes))))
+}
+
+/// Writes each item's bytes into `root/folder` and returns the new relative
+/// paths. Items are fetched lazily, one at a time. One bad item does not stop
+/// the rest; it fails the call only if nothing landed.
+pub fn write_into<'a>(
+  root: &Path,
+  folder: &str,
+  fetched: impl IntoIterator<Item = Result<(&'a Item, Vec<u8>), String>>,
+) -> Result<Vec<String>, String> {
   let dir = vault_dir(root, folder)?;
   let mut imported = Vec::new();
   let mut last_error = None;
-  for item in items {
-    let bytes = match fetch(&item.url) {
-      Ok(bytes) => bytes,
+  for result in fetched {
+    let (item, bytes) = match result {
+      Ok(fetched) => fetched,
       Err(error) => {
         last_error = Some(error);
         continue;
@@ -229,6 +240,18 @@ mod tests {
     assert_eq!(file_name(&item("https://x.com/a/b.png", Some("封面.png")), "png"), "封面.png");
     assert_eq!(file_name(&item("data:image/png;base64,AA", None), "png"), "导入.png");
     assert_eq!(file_name(&item("https://x.com/", Some("../../.etc")), "png"), "-..-.png");
+  }
+
+  #[test]
+  fn bytes_in_hand_land_under_the_given_name() {
+    let dir = std::env::temp_dir().join(format!("deja-import-bytes-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pasted = item("", Some("剪贴板图片"));
+    let landed = write_into(&dir, "", [Ok((&pasted, b"\x89PNG\r\n\x1a\nrest".to_vec()))]).unwrap();
+    assert_eq!(landed, vec!["剪贴板图片.png"]);
+    assert_eq!(std::fs::read(dir.join("剪贴板图片.png")).unwrap(), b"\x89PNG\r\n\x1a\nrest");
+    let _ = std::fs::remove_dir_all(&dir);
   }
 
   #[test]
