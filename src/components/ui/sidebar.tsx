@@ -6,14 +6,11 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { SidebarSimpleIcon } from "@phosphor-icons/react"
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state"
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
   open: boolean
-  setOpen: (open: boolean) => void
   toggleSidebar: () => void
 }
 
@@ -39,17 +36,7 @@ function SidebarProvider({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const setOpen = React.useCallback(
-    (openState: boolean) => {
-      onOpenChange(openState)
-
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
-    },
-    [onOpenChange]
-  )
-
-  const toggleSidebar = React.useCallback(() => setOpen(!open), [setOpen, open])
+  const toggleSidebar = React.useCallback(() => onOpenChange(!open), [onOpenChange, open])
 
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
@@ -74,10 +61,9 @@ function SidebarProvider({
     () => ({
       state,
       open,
-      setOpen,
       toggleSidebar,
     }),
-    [state, open, setOpen, toggleSidebar]
+    [state, open, toggleSidebar]
   )
 
   return (
