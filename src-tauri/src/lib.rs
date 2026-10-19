@@ -127,6 +127,22 @@ static DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new
 /// Absolute paths this process wrote by import; undo deletes only these.
 static IMPORTED: Mutex<std::collections::BTreeSet<PathBuf>> = Mutex::new(std::collections::BTreeSet::new());
 
+/// Runs `work` on the open vault, holding the engine lock for its length.
+fn with_engine<T>(work: impl FnOnce(&mut Engine) -> Result<T, String>) -> Result<T, String> {
+  let mut guard = ENGINE.lock().expect("engine lock");
+  work(guard.as_mut().ok_or("no vault open")?)
+}
+
+fn vault_root() -> Result<PathBuf, String> {
+  with_engine(|engine| Ok(engine.root.clone()))
+}
+
+/// What every command that changed the disk answers with: the vault as it is now.
+fn rescanned(engine: &mut Engine) -> Result<Value, String> {
+  rescan(engine)?;
+  Ok(snapshot(engine, "name"))
+}
+
 /// Always absolute: thumbnail paths are handed to another process (the model
 /// sidecar) whose working directory is not ours.
 pub fn data_dir() -> PathBuf {
@@ -414,10 +430,7 @@ fn rescan(engine: &mut Engine) -> Result<(), String> {
 }
 
 fn refresh() -> Result<Value, String> {
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  rescan(engine)?;
-  Ok(snapshot(engine, "name"))
+  with_engine(rescanned)
 }
 
 /// Saves the folders the user left out and answers with the view they leave.
@@ -425,11 +438,10 @@ fn refresh() -> Result<Value, String> {
 fn set_scope(args: &Value) -> Result<Value, String> {
   let excluded: Vec<String> = serde_json::from_value(args.get("excluded").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("excluded is malformed: {e}"))?;
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  engine.scope = scope::write(&engine.root, excluded)?;
-  rescan(engine)?;
-  Ok(snapshot(engine, "name"))
+  with_engine(|engine| {
+    engine.scope = scope::write(&engine.root, excluded)?;
+    rescanned(engine)
+  })
 }
 
 /// Writes dropped items into a vault folder, then rescans so the reply already
@@ -473,7 +485,7 @@ fn import_clipboard(args: &Value) -> Result<Value, String> {
 }
 
 fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
-  let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
+  let root = vault_root()?;
   let imported = import::import_into(&root, folder, items)?;
   IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
   Ok(json!({ "imported": imported, "view": refresh()? }))
@@ -483,7 +495,7 @@ fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
 /// be used to delete the user's own files.
 fn undo_import(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
-  let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
+  let root = vault_root()?;
   let mut imported = IMPORTED.lock().expect("imported lock");
   if let Some(rel) = rels.iter().find(|rel| !imported.contains(&root.join(rel))) {
     return Err(format!("{rel} was not imported here"));
@@ -498,22 +510,20 @@ fn undo_import(args: &Value) -> Result<Value, String> {
 
 fn entry(args: &Value) -> Result<Value, String> {
   let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  serde_json::to_value(entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?)
-    .map_err(|e| e.to_string())
+  with_engine(|engine| {
+    serde_json::to_value(entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?)
+      .map_err(|e| e.to_string())
+  })
 }
 
 /// Selects the file in Finder. Only paths the vault already lists are accepted,
 /// so the UI cannot be used to open arbitrary locations.
 fn reveal(args: &Value) -> Result<Value, String> {
   let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let path = {
-    let guard = ENGINE.lock().expect("engine lock");
-    let engine = guard.as_ref().ok_or("no vault open")?;
+  let path = with_engine(|engine| {
     listed(engine, &[rel.to_string()])?;
-    engine.root.join(rel)
-  };
+    Ok(engine.root.join(rel))
+  })?;
   std::process::Command::new("open")
     .arg("-R")
     .arg(&path)
@@ -541,12 +551,10 @@ fn listed(engine: &Engine, rels: &[String]) -> Result<(), String> {
 /// way leaves some files moved; the reply says which by looking at the disk.
 fn trash_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
-  let root = {
-    let guard = ENGINE.lock().expect("engine lock");
-    let engine = guard.as_ref().ok_or("no vault open")?;
+  let root = with_engine(|engine| {
     listed(engine, &rels)?;
-    engine.root.clone()
-  };
+    Ok(engine.root.clone())
+  })?;
   let into = std::env::var_os("DEJA_TRASH_DIR").map(PathBuf::from);
   let paths: Vec<PathBuf> = rels.iter().map(|rel| root.join(rel)).collect();
   let error = files::trash(&paths, into.as_deref()).err();
@@ -561,45 +569,45 @@ fn trash_entries(args: &Value) -> Result<Value, String> {
 fn move_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("").to_string();
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  listed(engine, &rels)?;
-  let dir = import::vault_dir(&engine.root, &folder)?;
-  let mut moved: Vec<(String, String)> = Vec::new();
-  for rel in &rels {
-    let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
-    if parent == folder {
-      continue;
-    }
-    let name = import::unique(&dir, name);
-    let to = import::rel_in(&folder, &name);
-    std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
-    let sidecar = meta::meta_path(&engine.root, rel);
-    if sidecar.exists() {
-      let target = meta::meta_path(&engine.root, &to);
-      if let Some(parent) = target.parent() {
-        let _ = std::fs::create_dir_all(parent);
+  with_engine(|engine| {
+    listed(engine, &rels)?;
+    let dir = import::vault_dir(&engine.root, &folder)?;
+    let mut moved: Vec<(String, String)> = Vec::new();
+    for rel in &rels {
+      let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
+      if parent == folder {
+        continue;
       }
-      let _ = std::fs::rename(&sidecar, &target);
-    }
-    if let Some(mut computed) = engine.computed.remove(rel) {
-      // The thumbnail is named after the path; one left under the old name
-      // would be picked up by the next file to land there.
-      let thumb = thumb::path_for(&engine.cache_dir, &to);
-      if let Some(old) = computed.thumb_path.as_deref() {
-        if std::fs::rename(old, &thumb).is_ok() {
-          computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+      let name = import::unique(&dir, name);
+      let to = import::rel_in(&folder, &name);
+      std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
+      let sidecar = meta::meta_path(&engine.root, rel);
+      if sidecar.exists() {
+        let target = meta::meta_path(&engine.root, &to);
+        if let Some(parent) = target.parent() {
+          let _ = std::fs::create_dir_all(parent);
         }
+        let _ = std::fs::rename(&sidecar, &target);
       }
-      engine.computed.insert(to.clone(), computed);
+      if let Some(mut computed) = engine.computed.remove(rel) {
+        // The thumbnail is named after the path; one left under the old name
+        // would be picked up by the next file to land there.
+        let thumb = thumb::path_for(&engine.cache_dir, &to);
+        if let Some(old) = computed.thumb_path.as_deref() {
+          if std::fs::rename(old, &thumb).is_ok() {
+            computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+          }
+        }
+        engine.computed.insert(to.clone(), computed);
+      }
+      let _ = engine.vectors.rename(rel, &to);
+      moved.push((rel.clone(), to));
     }
-    let _ = engine.vectors.rename(rel, &to);
-    moved.push((rel.clone(), to));
-  }
-  rescan(engine)?;
-  save_cache(&engine.cache_dir, &engine.computed);
-  let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
-  Ok(json!({ "moved": moved, "view": snapshot(engine, "name") }))
+    let view = rescanned(engine)?;
+    save_cache(&engine.cache_dir, &engine.computed);
+    let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
+    Ok(json!({ "moved": moved, "view": view }))
+  })
 }
 
 /// Makes an empty folder inside a vault folder and rescans, so the reply
@@ -612,38 +620,37 @@ fn create_folder(args: &Value) -> Result<Value, String> {
   if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
     return Err(format!("{name} is not a valid folder name"));
   }
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  if !parent.is_empty() && !engine.dirs.contains(&parent) {
-    return Err(format!("{parent} is not in the vault"));
-  }
-  let rel = import::rel_in(&parent, &name);
-  let dir = engine.root.join(&rel);
-  if dir.exists() {
-    return Err(format!("{rel} already exists"));
-  }
-  std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
-  rescan(engine)?;
-  Ok(json!({ "folder": rel, "view": snapshot(engine, "name") }))
+  with_engine(|engine| {
+    if !parent.is_empty() && !engine.dirs.contains(&parent) {
+      return Err(format!("{parent} is not in the vault"));
+    }
+    let rel = import::rel_in(&parent, &name);
+    let dir = engine.root.join(&rel);
+    if dir.exists() {
+      return Err(format!("{rel} already exists"));
+    }
+    std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
+    Ok(json!({ "folder": rel, "view": rescanned(engine)? }))
+  })
 }
 
 /// Copies across the whole vault. Only files whose size another file shares are
 /// read, since only those can be byte copies.
 fn duplicates() -> Result<Value, String> {
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  let entries: Vec<Entry> = engine.files.iter().filter_map(|f| entry_view(engine, &f.rel_path)).collect();
-  let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
-  for file in &engine.files {
-    *sizes.entry(file.size_bytes).or_default() += 1;
-  }
-  let digests: BTreeMap<String, u64> = engine
-    .files
-    .iter()
-    .filter(|file| sizes[&file.size_bytes] > 1)
-    .filter_map(|file| std::fs::read(&file.abs).ok().map(|bytes| (file.rel_path.clone(), color::fnv64(&bytes))))
-    .collect();
-  Ok(json!({ "groups": dupes::groups(&entries, &digests) }))
+  with_engine(|engine| {
+    let entries: Vec<Entry> = engine.files.iter().filter_map(|f| entry_view(engine, &f.rel_path)).collect();
+    let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
+    for file in &engine.files {
+      *sizes.entry(file.size_bytes).or_default() += 1;
+    }
+    let digests: BTreeMap<String, u64> = engine
+      .files
+      .iter()
+      .filter(|file| sizes[&file.size_bytes] > 1)
+      .filter_map(|file| std::fs::read(&file.abs).ok().map(|bytes| (file.rel_path.clone(), color::fnv64(&bytes))))
+      .collect();
+    Ok(json!({ "groups": dupes::groups(&entries, &digests) }))
+  })
 }
 
 fn save_meta(args: &Value) -> Result<Value, String> {
@@ -654,12 +661,12 @@ fn save_meta(args: &Value) -> Result<Value, String> {
     .to_string();
   let meta: Meta = serde_json::from_value(args.get("meta").cloned().unwrap_or(json!({})))
     .map_err(|e| format!("meta is malformed: {e}"))?;
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  meta::write(&engine.root, &rel, &meta)?;
-  let mut view = entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
-  view.meta = meta;
-  serde_json::to_value(view).map_err(|e| e.to_string())
+  with_engine(|engine| {
+    meta::write(&engine.root, &rel, &meta)?;
+    let mut view = entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
+    view.meta = meta;
+    serde_json::to_value(view).map_err(|e| e.to_string())
+  })
 }
 
 /// One slice of background work: derive thumbnails and analysis for `batch`
@@ -668,65 +675,65 @@ fn save_meta(args: &Value) -> Result<Value, String> {
 fn index_slice(args: &Value) -> Result<Value, String> {
   let batch = args.get("batch").and_then(Value::as_u64).unwrap_or(2) as usize;
   let model_ready = settings::get().semantic && model::ready_or_restart();
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  let derived = batch.min(engine.pending.len());
-  for _ in 0..derived {
-    let index = engine.pending.remove(0);
-    let file = engine.files[index].clone();
-    let computed = thumb::build(&engine.cache_dir, &file);
-    engine.computed.insert(file.rel_path.clone(), computed);
-  }
+  with_engine(|engine| {
+    let derived = batch.min(engine.pending.len());
+    for _ in 0..derived {
+      let index = engine.pending.remove(0);
+      let file = engine.files[index].clone();
+      let computed = thumb::build(&engine.cache_dir, &file);
+      engine.computed.insert(file.rel_path.clone(), computed);
+    }
 
-  let mut embedded_now = 0usize;
-  let mut embed_error: Option<String> = None;
-  // Only files with a thumbnail can be embedded; the rest would be retried forever.
-  let thumbs: BTreeMap<String, String> = engine
-    .files
-    .iter()
-    .filter_map(|file| {
-      let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
-      Some((file.rel_path.clone(), thumb))
-    })
-    .collect();
-  if model_ready {
-    let paths: Vec<String> = thumbs.keys().cloned().collect();
-    let items: Vec<model::Item> = engine
-      .vectors
-      .missing(&paths, batch.max(1))
-      .into_iter()
-      .map(|rel| model::Item { image: Some(thumbs[&rel].clone()), id: rel, text: None })
+    let mut embedded_now = 0usize;
+    let mut embed_error: Option<String> = None;
+    // Only files with a thumbnail can be embedded; the rest would be retried forever.
+    let thumbs: BTreeMap<String, String> = engine
+      .files
+      .iter()
+      .filter_map(|file| {
+        let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
+        Some((file.rel_path.clone(), thumb))
+      })
       .collect();
-    for chunk in items.chunks(8) {
-      match model::embed(chunk) {
-        Ok(rows) => {
-          for (rel, vector) in rows {
-            if engine.vectors.insert(&rel, &vector).is_ok() {
-              embedded_now += 1;
+    if model_ready {
+      let paths: Vec<String> = thumbs.keys().cloned().collect();
+      let items: Vec<model::Item> = engine
+        .vectors
+        .missing(&paths, batch.max(1))
+        .into_iter()
+        .map(|rel| model::Item { image: Some(thumbs[&rel].clone()), id: rel, text: None })
+        .collect();
+      for chunk in items.chunks(8) {
+        match model::embed(chunk) {
+          Ok(rows) => {
+            for (rel, vector) in rows {
+              if engine.vectors.insert(&rel, &vector).is_ok() {
+                embedded_now += 1;
+              }
             }
           }
+          Err(error) => embed_error = Some(error),
         }
-        Err(error) => embed_error = Some(error),
       }
     }
-  }
 
-  if derived > 0 || embedded_now > 0 {
-    save_cache(&engine.cache_dir, &engine.computed);
-  }
-  let indexed = engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count();
-  let embedded = settled(engine);
-  Ok(json!({
-    "indexed": indexed,
-    "embedded": embedded,
-    "total": engine.files.len(),
-    "remaining": engine.pending.len(),
-    "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
-    "derived": derived,
-    "embeddedNow": embedded_now,
-    "modelReady": model::healthy(),
-    "modelError": embed_error,
-  }))
+    if derived > 0 || embedded_now > 0 {
+      save_cache(&engine.cache_dir, &engine.computed);
+    }
+    let indexed = engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count();
+    let embedded = settled(engine);
+    Ok(json!({
+      "indexed": indexed,
+      "embedded": embedded,
+      "total": engine.files.len(),
+      "remaining": engine.pending.len(),
+      "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
+      "derived": derived,
+      "embeddedNow": embedded_now,
+      "modelReady": model::healthy(),
+      "modelError": embed_error,
+    }))
+  })
 }
 
 pub fn run_tauri() {
