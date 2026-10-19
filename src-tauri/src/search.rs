@@ -220,7 +220,7 @@ pub fn run(args: &Value) -> Result<Value, String> {
     // ~0.6), so no cutoff; the ranking carries the signal.
     let mut similarity: std::collections::BTreeMap<String, f32> = Default::default();
     if model_ready {
-      let query_item = model::Item { id: "query".into(), text: Some(query_text(&query)), image: None };
+      let query_item = model::Item::Text { id: "query".into(), text: query_text(&query) };
       if let Ok(vectors) = model::embed(&[query_item]) {
         if let Some((_, query_vector)) = vectors.first() {
           if let Ok(hits) = engine.vectors.nearest(query_vector, SEMANTIC_K) {

@@ -17,13 +17,14 @@ fn port() -> u16 {
 /// Measured in sidecar/eval: 512 beats 256 by ~0.03 mAP on the 148-image set.
 pub const DIM: usize = 512;
 
+/// One thing to embed: a query's text or a thumbnail's path, never both.
+/// Untagged, so it goes out as {"id","text"} or {"id","image"}, the shape
+/// embed_server.py reads.
 #[derive(Serialize)]
-pub struct Item {
-  pub id: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub text: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub image: Option<String>,
+#[serde(untagged)]
+pub enum Item {
+  Text { id: String, text: String },
+  Image { id: String, image: String },
 }
 
 pub fn sidecar_dir() -> Option<PathBuf> {
@@ -315,6 +316,18 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn an_item_is_sent_as_id_and_text_or_image() {
+    let items = [
+      Item::Text { id: "query".into(), text: "海边的照片".into() },
+      Item::Image { id: "a/b.png".into(), image: "/cache/thumbs/0001.png".into() },
+    ];
+    assert_eq!(
+      serde_json::to_string(&items).expect("serialize"),
+      r#"[{"id":"query","text":"海边的照片"},{"id":"a/b.png","image":"/cache/thumbs/0001.png"}]"#
+    );
+  }
 
   #[test]
   fn cosine_is_one_for_same_direction() {

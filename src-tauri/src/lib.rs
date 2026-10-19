@@ -721,7 +721,7 @@ fn index_slice(args: &Value) -> Result<Value, String> {
         .vectors
         .missing(&paths, batch.max(1))
         .into_iter()
-        .map(|rel| model::Item { image: Some(thumbs[&rel].clone()), id: rel, text: None })
+        .map(|rel| model::Item::Image { image: thumbs[&rel].clone(), id: rel })
         .collect();
       for chunk in items.chunks(8) {
         match model::embed(chunk) {
