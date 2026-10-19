@@ -94,10 +94,14 @@ export async function trashEntries(relPaths: string[]) {
 export async function moveEntries(relPaths: string[], folder: string) {
   if (relPaths.length === 0) return;
   try {
-    const { moved, view } = await api.move(relPaths, folder);
+    const { moved, error, view } = await api.move(relPaths, folder);
     dispatch({ type: "ENTRIES_MOVED", moved });
     dispatch({ type: "RESCANNED", view });
     const where = `「${folderName(folder)}」`;
+    if (error) {
+      toast.error(moved.length === 0 ? "没能移动" : `已移动 ${moved.length} 项，其余没能移动`, { description: humanError(error) });
+      return;
+    }
     if (moved.length === 0) {
       toast(`已经在${where}里了`);
       return;

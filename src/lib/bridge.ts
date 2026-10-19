@@ -16,7 +16,6 @@ import type {
 } from "./types";
 
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { COLOR_PRESETS } from "./types";
 
 export const inTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
@@ -48,7 +47,6 @@ export const api = {
       filter,
       sort,
       semantic,
-      countColors: COLOR_PRESETS.map((preset) => preset.hex),
     }),
   saveMeta: (relPath: string, meta: EntryMeta) => call<Entry>("save_meta", { relPath, meta }),
   indexSlice: (batch: number) => call<IndexProgress>("index_slice", { batch }),
@@ -70,7 +68,9 @@ export const api = {
   /** One request for every file; `trashed` lists the ones that left the vault. */
   trash: (relPaths: string[]) =>
     call<{ trashed: string[]; error: string | null; view: VaultView }>("trash_entries", { relPaths }),
-  move: (relPaths: string[], folder: string) => call<{ moved: Moved[]; view: VaultView }>("move_entries", { relPaths, folder }),
+  /** `moved` lists the files that went; `error` is set when some did not. */
+  move: (relPaths: string[], folder: string) =>
+    call<{ moved: Moved[]; error: string | null; view: VaultView }>("move_entries", { relPaths, folder }),
   createFolder: (parent: string, name: string) =>
     call<{ folder: string; view: VaultView }>("create_folder", { parent, name }),
   duplicates: () => call<{ groups: DuplicateGroup[] }>("duplicates"),

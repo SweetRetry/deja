@@ -102,7 +102,8 @@ export type ImportItem = { url: string; name: string | null; source: string | nu
 /** A small png of the clipboard's picture, as a data URL, and its pixel size. */
 export type ClipboardPreview = { url: string; width: number | null; height: number | null };
 
-export type ImportResponse = { imported: string[]; view: VaultView };
+/** `warning` is set when the files landed but their notes could not be written. */
+export type ImportResponse = { imported: string[]; warning: string | null; view: VaultView };
 
 export const emptyFilter: Filter = {
   kinds: [],

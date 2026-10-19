@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
@@ -10,6 +11,7 @@ async function land(run: () => Promise<ImportResponse>): Promise<ImportResult> {
   try {
     const res = await run();
     dispatch({ type: "RESCANNED", view: res.view, select: res.imported[0] });
+    if (res.warning) toast.warning(humanError(res.warning));
     return { imported: res.imported };
   } catch (problem) {
     return { error: humanError(problem) };
