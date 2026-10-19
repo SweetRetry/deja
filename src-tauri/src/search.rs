@@ -1,23 +1,49 @@
-use crate::{color, model, Engine, Entry, ENGINE};
-use serde::Deserialize;
+use crate::color::{self, Family};
+use crate::{model, Engine, Entry, ENGINE};
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
+/// What the filter menu sends (src/lib/types.ts Filter). An empty string or a
+/// zero means the field is not narrowing.
 #[derive(Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Filter {
   pub kinds: Vec<String>,
-  pub orientation: Option<String>,
   pub min_width: Option<u32>,
-  pub max_width: Option<u32>,
-  pub min_height: Option<u32>,
-  pub max_height: Option<u32>,
-  pub from: Option<i64>,
-  pub to: Option<i64>,
-  pub color: Option<String>,
+  /// A colour family by name ("blue"), or by a swatch hex from before the
+  /// menu knew the names.
+  #[serde(deserialize_with = "family_or_none")]
+  pub color: Option<Family>,
   pub folder: Option<String>,
   pub min_rating: Option<u8>,
   pub tag: Option<String>,
+}
+
+fn family_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Family>, D::Error> {
+  match Option::<String>::deserialize(deserializer)?.as_deref() {
+    None | Some("") => Ok(None),
+    Some(text) => Family::parse(text)
+      .map(Some)
+      .ok_or_else(|| serde::de::Error::custom(format!("{text} is not a colour name or a hex colour"))),
+  }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct SearchArgs {
+  query: String,
+  sort: Option<String>,
+  semantic: Option<bool>,
+  filter: Filter,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SimilarArgs {
+  rel_path: String,
+  #[serde(default)]
+  limit: Option<usize>,
 }
 
 fn bigrams(word: &str) -> Vec<String> {
@@ -83,31 +109,6 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
       return false;
     }
   }
-  if let Some(max) = filter.max_width.filter(|m| *m > 0) {
-    if entry.width.unwrap_or(u32::MAX) > max {
-      return false;
-    }
-  }
-  if let Some(min) = filter.min_height.filter(|m| *m > 0) {
-    if entry.height.unwrap_or(0) < min {
-      return false;
-    }
-  }
-  if let Some(max) = filter.max_height.filter(|m| *m > 0) {
-    if entry.height.unwrap_or(u32::MAX) > max {
-      return false;
-    }
-  }
-  if let Some(from) = filter.from.filter(|v| *v > 0) {
-    if entry.modified < from {
-      return false;
-    }
-  }
-  if let Some(to) = filter.to.filter(|v| *v > 0) {
-    if entry.modified > to {
-      return false;
-    }
-  }
   if let Some(rating) = filter.min_rating.filter(|r| *r > 0) {
     if entry.meta.rating < rating {
       return false;
@@ -118,36 +119,12 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
       return false;
     }
   }
-  if let Some(orientation) = filter.orientation.as_deref().filter(|o| !o.is_empty()) {
-    let (w, h) = (entry.width.unwrap_or(0), entry.height.unwrap_or(0));
-    let actual = if w == 0 || h == 0 {
-      ""
-    } else if w > h {
-      "landscape"
-    } else if h > w {
-      "portrait"
-    } else {
-      "square"
-    };
-    if actual != orientation {
-      return false;
-    }
-  }
-  if let Some(hex) = filter.color.as_deref().filter(|c| !c.is_empty()) {
-    if !color::palette_matches(&entry.colors, hex) {
+  if let Some(family) = filter.color {
+    if !color::palette_matches(&entry.colors, family) {
       return false;
     }
   }
   true
-}
-
-fn orientation_of(entry: &Entry) -> &'static str {
-  match (entry.width, entry.height) {
-    (Some(w), Some(h)) if w > h => "landscape",
-    (Some(w), Some(h)) if h > w => "portrait",
-    (Some(_), Some(_)) => "square",
-    _ => "",
-  }
 }
 
 pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
@@ -155,12 +132,8 @@ pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
     "modified" => entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.rel_path.cmp(&b.rel_path))),
     "size" => entries.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes).then(a.rel_path.cmp(&b.rel_path))),
     "rating" => entries.sort_by(|a, b| b.meta.rating.cmp(&a.meta.rating).then(a.rel_path.cmp(&b.rel_path))),
-    _ => entries.sort_by(|a, b| natural_name(a).cmp(&natural_name(b))),
+    _ => entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
   }
-}
-
-fn natural_name(entry: &Entry) -> String {
-  entry.name.to_lowercase()
 }
 
 fn all_entries(engine: &Engine) -> Vec<Entry> {
@@ -201,31 +174,31 @@ fn fuse(keyword: &[String], semantic: &[String], limit: usize) -> Vec<String> {
 }
 
 pub fn run(args: &Value) -> Result<Value, String> {
-  let query = args.get("query").and_then(Value::as_str).unwrap_or("").trim().to_string();
-  let sort = args.get("sort").and_then(Value::as_str).unwrap_or("name").to_string();
-  let want_semantic = args.get("semantic").and_then(Value::as_bool).unwrap_or(true);
-  let filter: Filter = serde_json::from_value(args.get("filter").cloned().unwrap_or(json!({})))
-    .unwrap_or_default();
+  let SearchArgs { query, sort, semantic, filter } =
+    serde_json::from_value(args.clone()).map_err(|e| format!("search: {e}"))?;
+  let query = query.trim().to_string();
+  let sort = sort.unwrap_or_else(|| "name".into());
+  let want_semantic = semantic.unwrap_or(true);
   let started = std::time::Instant::now();
   // Before the engine lock: a model that idled out takes ~3 s to come back.
   let model_ready =
     want_semantic && crate::settings::get().semantic && !query.is_empty() && model::ready_or_restart();
   let guard = ENGINE.lock().expect("engine lock");
   let engine = guard.as_ref().ok_or("no vault open")?;
-  // Swatch counts use every filter but colour, so each swatch says how many
-  // files picking it would leave.
-  let swatches: Vec<String> = serde_json::from_value(args.get("countColors").cloned().unwrap_or(json!([])))
-    .unwrap_or_default();
+  // Colour counts use every filter but colour, so each swatch says how many
+  // files picking it would leave. They come back in Family::ALL order.
   let other_filters = Filter { color: None, ..filter.clone() };
   let base: Vec<Entry> = all_entries(engine).into_iter().filter(|e| passes(e, &other_filters)).collect();
-  let color_counts: Vec<usize> = swatches
+  let color_counts: Vec<usize> = Family::ALL
     .iter()
-    .map(|hex| base.iter().filter(|entry| color::palette_matches(&entry.colors, hex)).count())
+    .map(|family| base.iter().filter(|entry| color::palette_matches(&entry.colors, *family)).count())
     .collect();
-  let pool: Vec<Entry> = base.into_iter().filter(|e| passes(e, &filter)).collect();
+  let pool: Vec<Entry> = base
+    .into_iter()
+    .filter(|e| filter.color.map_or(true, |family| color::palette_matches(&e.colors, family)))
+    .collect();
   let empty = query.is_empty();
   let mut semantic_used = false;
-  let semantic_warm_ms = 0u128;
   let mut scores = serde_json::Map::new();
 
   let ranked: Vec<Entry> = if empty {
@@ -265,7 +238,7 @@ pub fn run(args: &Value) -> Result<Value, String> {
     semantic_order.sort_by(|a, b| similarity[b].partial_cmp(&similarity[a]).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)));
     semantic_used = !semantic_order.is_empty();
 
-    let order = fuse(&keyword_order, &semantic_order, 400);
+    let order = fuse(&keyword_order, &semantic_order, SEMANTIC_K);
     for (index, rel) in order.iter().enumerate() {
       let matched = similarity.get(rel).map(|cosine| match_percent(*cosine));
       scores.insert(rel.clone(), json!({ "rank": index + 1, "match": matched }));
@@ -279,21 +252,21 @@ pub fn run(args: &Value) -> Result<Value, String> {
     "entries": ranked,
     "scores": scores,
     "semantic": semantic_used,
-    "warmMs": semantic_warm_ms,
     "tookMs": started.elapsed().as_millis(),
     "colorCounts": color_counts,
   }))
 }
 
 pub fn similar(args: &Value) -> Result<Value, String> {
-  let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(24) as usize;
+  let SimilarArgs { rel_path: rel, limit } =
+    serde_json::from_value(args.clone()).map_err(|e| format!("similar: {e}"))?;
+  let limit = limit.unwrap_or(24);
   let guard = ENGINE.lock().expect("engine lock");
   let engine = guard.as_ref().ok_or("no vault open")?;
-  let target = crate::entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
-  let target_image = engine.vectors.vector(rel);
+  let target = crate::entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
+  let target_image = engine.vectors.vector(&rel);
   let entries: Vec<Entry> = engine.files.iter().filter_map(|f| crate::entry_view(engine, &f.rel_path)).collect();
-  let mut rows: Vec<(String, f64, f64, f64)> = Vec::new();
+  let mut rows: Vec<(String, f64)> = Vec::new();
   for entry in &entries {
     if entry.rel_path == target.rel_path {
       continue;
@@ -324,23 +297,10 @@ pub fn similar(args: &Value) -> Result<Value, String> {
         None => 0.0,
       })
       .unwrap_or(0.0);
-    let score = 0.55 * hash_score + 0.25 * color_score + 0.20 * vector_score;
-    rows.push((entry.rel_path.clone(), score, hash_score, vector_score));
+    rows.push((entry.rel_path.clone(), 0.55 * hash_score + 0.25 * color_score + 0.20 * vector_score));
   }
   rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
-  let results: Vec<Value> = rows
-    .into_iter()
-    .take(limit)
-    .map(|(rel, score, hash_score, vector_score)| {
-      json!({
-        "relPath": rel,
-        "score": (score * 1000.0).round() / 1000.0,
-        "hashScore": (hash_score * 1000.0).round() / 1000.0,
-        "vectorScore": (vector_score * 1000.0).round() / 1000.0,
-        "orientation": orientation_of(&target),
-      })
-    })
-    .collect();
+  let results: Vec<Value> = rows.into_iter().take(limit).map(|(rel, _)| json!({ "relPath": rel })).collect();
   Ok(json!({ "results": results }))
 }
 
@@ -399,14 +359,44 @@ mod tests {
     let item = entry("海边.png", "摄影/海边.png", &[], "");
     let mut filter = Filter { kinds: vec!["video".into()], ..Default::default() };
     assert!(!passes(&item, &filter));
-    filter = Filter { orientation: Some("portrait".into()), ..Default::default() };
-    assert!(!passes(&item, &filter));
     filter = Filter { min_width: Some(2000), ..Default::default() };
     assert!(!passes(&item, &filter));
-    filter = Filter { color: Some("#1b1b1f".into()), ..Default::default() };
+    filter = Filter { color: Some(Family::Black), ..Default::default() };
     assert!(passes(&item, &filter));
-    filter = Filter { color: Some("#00ff00".into()), ..Default::default() };
+    filter = Filter { color: Some(Family::Green), ..Default::default() };
     assert!(!passes(&item, &filter));
+  }
+
+  #[test]
+  fn the_requests_the_bridge_sends_parse() {
+    // src/lib/bridge.ts api.search, with emptyFilter from src/lib/types.ts.
+    let full = json!({
+      "query": " 海边 ",
+      "filter": { "kinds": ["image"], "minWidth": 0, "minRating": 0, "color": "", "folder": "", "tag": "" },
+      "sort": "modified",
+      "semantic": false,
+      "countColors": ["#1b1b1b", "#3065be"],
+    });
+    let parsed: SearchArgs = serde_json::from_value(full).expect("full request");
+    assert_eq!(parsed.query, " 海边 ");
+    assert_eq!(parsed.sort.as_deref(), Some("modified"));
+    assert_eq!(parsed.semantic, Some(false));
+    assert_eq!(parsed.filter.kinds, vec!["image"]);
+    assert_eq!(parsed.filter.color, None, "an empty colour narrows nothing");
+
+    let bare: SearchArgs = serde_json::from_value(json!({})).expect("every field has a default");
+    assert_eq!(bare.query, "");
+    assert!(bare.sort.is_none() && bare.semantic.is_none());
+
+    // The colour arrives as a family name, or as the swatch hex older menus sent.
+    let by_name: Filter = serde_json::from_value(json!({ "color": "blue" })).expect("name");
+    let by_hex: Filter = serde_json::from_value(json!({ "color": "#3065be" })).expect("hex");
+    assert_eq!((by_name.color, by_hex.color), (Some(Family::Blue), Some(Family::Blue)));
+    assert!(serde_json::from_value::<Filter>(json!({ "color": "bleu" })).is_err());
+
+    let similar: SimilarArgs = serde_json::from_value(json!({ "relPath": "a.png", "limit": 24 })).expect("similar");
+    assert_eq!((similar.rel_path.as_str(), similar.limit), ("a.png", Some(24)));
+    assert!(serde_json::from_value::<SimilarArgs>(json!({ "limit": 3 })).is_err(), "relPath is required");
   }
 
   #[test]

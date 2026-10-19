@@ -92,6 +92,52 @@ pub enum Family {
   Pink,
 }
 
+impl Family {
+  /// Every family, in the order the filter menu shows its swatches. Search
+  /// answers colour counts in this order.
+  pub const ALL: [Family; 12] = [
+    Family::Black,
+    Family::Grey,
+    Family::White,
+    Family::Brown,
+    Family::Red,
+    Family::Orange,
+    Family::Yellow,
+    Family::Green,
+    Family::Cyan,
+    Family::Blue,
+    Family::Purple,
+    Family::Pink,
+  ];
+
+  /// The name the filter sends.
+  pub fn name(self) -> &'static str {
+    match self {
+      Family::Black => "black",
+      Family::Grey => "grey",
+      Family::White => "white",
+      Family::Brown => "brown",
+      Family::Red => "red",
+      Family::Orange => "orange",
+      Family::Yellow => "yellow",
+      Family::Green => "green",
+      Family::Cyan => "cyan",
+      Family::Blue => "blue",
+      Family::Purple => "purple",
+      Family::Pink => "pink",
+    }
+  }
+
+  /// A family by its name, or by a hex it names: the filter menu sent its
+  /// swatch's hex before it knew the names.
+  pub fn parse(text: &str) -> Option<Family> {
+    Family::ALL
+      .into_iter()
+      .find(|family| family.name() == text)
+      .or_else(|| hex_to_oklab(text).map(family_of))
+  }
+}
+
 /// Hue anchors in OKLCH degrees, measured off the swatches. A colour takes the
 /// nearest anchor, so the circle is a partition and no hue falls between names.
 const HUES: [(f64, Family); 8] = [
@@ -158,8 +204,7 @@ pub fn family_of(lab: Oklab) -> Family {
 /// pure black outside every swatch: 17 of 62 real images matched none, 3 do now.
 /// Neutrals sit in the shadows and backgrounds of most photos, so they must
 /// cover more of the image to count.
-pub fn palette_matches(colors: &[ColorShare], hex: &str) -> bool {
-  let Some(want) = hex_to_oklab(hex).map(family_of) else { return false };
+pub fn palette_matches(colors: &[ColorShare], want: Family) -> bool {
   let covered: f64 = colors
     .iter()
     .filter(|color| hex_to_oklab(&color.hex).is_some_and(|have| families(have).any(|f| f == want)))
@@ -224,8 +269,10 @@ pub fn decode_png(bytes: &[u8]) -> Option<Image> {
   if depth != 8 || width == 0 || height == 0 {
     return None;
   }
+  // Type 3 (palette) is refused with the rest: its bytes are PLTE indexes,
+  // not grey levels, and `sips -Z 32` never writes it.
   let channels = match color_type {
-    0 | 3 => 1,
+    0 => 1,
     2 => 3,
     4 => 2,
     6 => 4,
@@ -277,11 +324,12 @@ pub fn decode_png(bytes: &[u8]) -> Option<Image> {
   }
   let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
   for pixel in pixels.chunks_exact(channels) {
-    match channels {
-      1 => rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]),
-      2 => rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]),
-      3 => rgb.extend_from_slice(&pixel[0..3]),
-      _ => rgb.extend_from_slice(&pixel[0..3]),
+    // Grey (with or without alpha) is spread over three channels; colour
+    // keeps its first three and drops alpha.
+    if channels < 3 {
+      rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]);
+    } else {
+      rgb.extend_from_slice(&pixel[0..3]);
     }
   }
   Some(Image { width, height, rgb })
@@ -328,6 +376,20 @@ impl Lcg {
   }
 }
 
+/// Index of the centre closest to `lab`; the first wins a tie.
+fn nearest(centers: &[Oklab], lab: Oklab) -> usize {
+  let mut best = 0;
+  let mut best_distance = f64::MAX;
+  for (j, center) in centers.iter().enumerate() {
+    let d = distance(lab, *center);
+    if d < best_distance {
+      best_distance = d;
+      best = j;
+    }
+  }
+  best
+}
+
 /// k-means in OKLab over the 32x32 sample. Colors under 10% are dropped, so a
 /// monochrome poster reports one color and a sunset reports three.
 pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec<ColorShare> {
@@ -346,16 +408,7 @@ pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec
   for _ in 0..12 {
     let mut groups: Vec<Vec<usize>> = vec![Vec::new(); centers.len()];
     for (i, lab) in labs.iter().enumerate() {
-      let mut best = 0;
-      let mut best_distance = f64::MAX;
-      for (j, center) in centers.iter().enumerate() {
-        let d = distance(*lab, *center);
-        if d < best_distance {
-          best_distance = d;
-          best = j;
-        }
-      }
-      groups[best].push(i);
+      groups[nearest(&centers, *lab)].push(i);
     }
     for (j, group) in groups.iter().enumerate() {
       if group.is_empty() {
@@ -371,22 +424,12 @@ pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec
       centers[j] = Oklab { l: sum.l / n, a: sum.a / n, b: sum.b / n };
     }
   }
-  let mut buckets: Vec<(Oklab, f64)> = Vec::new();
-  for lab in &labs {
-    let mut best = 0;
-    let mut best_distance = f64::MAX;
-    for (j, center) in centers.iter().enumerate() {
-      let d = distance(*lab, *center);
-      if d < best_distance {
-        best_distance = d;
-        best = j;
-      }
-    }
-    buckets.push((centers[best], 0.0));
-  }
+  // Each sample adds its share to its centre; centres that ended up on top of
+  // each other count as one colour.
   let total = labs.len() as f64;
   let mut merged: Vec<(Oklab, f64)> = Vec::new();
-  for (center, _) in buckets {
+  for lab in &labs {
+    let center = centers[nearest(&centers, *lab)];
     match merged.iter_mut().find(|(c, _)| distance(*c, center) < 0.03) {
       Some((_, share)) => *share += 1.0 / total,
       None => merged.push((center, 1.0 / total)),
@@ -454,39 +497,50 @@ mod tests {
   fn grey_portrait_is_not_dark_blue() {
     // A black-and-white photo from the assets folder.
     let grey = palette(&[("#444444", 0.25), ("#363636", 0.20), ("#575757", 0.17)]);
-    assert!(!palette_matches(&grey, "#3065be"));
-    assert!(palette_matches(&grey, "#717171"), "it is a grey picture");
+    assert!(!palette_matches(&grey, Family::Blue));
+    assert!(palette_matches(&grey, Family::Grey), "it is a grey picture");
   }
 
   #[test]
   fn mustard_is_not_green_but_fern_is() {
     let mustard = palette(&[("#946825", 0.23), ("#b1832a", 0.22), ("#ca9947", 0.20)]);
-    assert!(!palette_matches(&mustard, "#4f9b3e"));
+    assert!(!palette_matches(&mustard, Family::Green));
     let fern = palette(&[("#3f6b1c", 0.45), ("#20351a", 0.20)]);
-    assert!(palette_matches(&fern, "#4f9b3e"));
+    assert!(palette_matches(&fern, Family::Green));
   }
 
   #[test]
   fn brown_and_orange_are_told_apart_by_lightness() {
     let walnut = palette(&[("#6b4226", 0.50)]);
     let tangerine = palette(&[("#ef8a2c", 0.50)]);
-    assert!(palette_matches(&walnut, "#774826"));
-    assert!(!palette_matches(&walnut, "#e87f25"));
-    assert!(palette_matches(&tangerine, "#e87f25"));
-    assert!(!palette_matches(&tangerine, "#774826"));
+    assert!(palette_matches(&walnut, Family::Brown));
+    assert!(!palette_matches(&walnut, Family::Orange));
+    assert!(palette_matches(&tangerine, Family::Orange));
+    assert!(!palette_matches(&tangerine, Family::Brown));
   }
 
   #[test]
   fn a_shadow_does_not_make_a_picture_dark() {
     let shadowed = palette(&[("#d9d2c5", 0.50), ("#1c1c1e", 0.20)]);
-    assert!(!palette_matches(&shadowed, "#1b1b1f"));
+    assert!(!palette_matches(&shadowed, Family::Black));
     let night = palette(&[("#0b0b0d", 0.55), ("#2a2a2e", 0.15)]);
-    assert!(palette_matches(&night, "#1b1b1f"));
+    assert!(palette_matches(&night, Family::Black));
+  }
+
+  #[test]
+  fn a_family_is_parsed_from_its_name_or_its_swatch() {
+    for family in Family::ALL {
+      assert_eq!(Family::parse(family.name()), Some(family));
+    }
+    assert_eq!(Family::parse("#3065be"), Some(Family::Blue), "the hex the old filter sent");
+    assert_eq!(Family::parse(""), None);
+    assert_eq!(Family::parse("bleu"), None);
   }
 
   #[test]
   fn every_swatch_names_itself() {
-    // COLOR_PRESETS in src/lib/types.ts.
+    // COLOR_PRESETS in src/lib/types.ts, in its order: colour counts come
+    // back in Family::ALL order and the menu reads them by position.
     let swatches = [
       ("#1b1b1b", Family::Black),
       ("#717171", Family::Grey),
@@ -504,19 +558,20 @@ mod tests {
     for (hex, family) in swatches {
       assert_eq!(family_of(hex_to_oklab(hex).unwrap()), family, "{hex}");
     }
+    assert_eq!(swatches.map(|(_, family)| family), Family::ALL);
   }
 
   #[test]
   fn dark_and_muted_shades_find_their_hue() {
     // Palettes from real images that used to match no swatch at all.
     let navy = palette(&[("#0d1029", 0.351), ("#1f1d45", 0.223), ("#332b6a", 0.169)]);
-    assert!(palette_matches(&navy, "#3065be"));
+    assert!(palette_matches(&navy, Family::Blue));
     let forest = palette(&[("#2c4932", 0.313), ("#223c24", 0.188), ("#0e230f", 0.159)]);
-    assert!(palette_matches(&forest, "#4f9b3e"));
+    assert!(palette_matches(&forest, Family::Green));
     let black = palette(&[("#000000", 0.294), ("#81788d", 0.208), ("#020202", 0.202)]);
-    assert!(palette_matches(&black, "#1b1b1b"));
+    assert!(palette_matches(&black, Family::Black));
     let dusty_rose = palette(&[("#be93a7", 0.288), ("#d9bfc8", 0.179), ("#4f4650", 0.141)]);
-    assert!(palette_matches(&dusty_rose, "#e694bb"));
+    assert!(palette_matches(&dusty_rose, Family::Pink));
   }
 
   #[test]
@@ -533,6 +588,69 @@ mod tests {
     let lab = hex_to_oklab("#ffffff").expect("valid hex");
     assert!((lab.l - 1.0).abs() < 0.01);
     assert!(hex_to_oklab("bogus").is_none());
+  }
+
+  /// A one-IDAT, filter-0 PNG. CRCs are zero: the decoder never checks them.
+  fn png(color_type: u8, width: u32, height: u32, rows: &[u8], extra: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+    let chunk = |kind: &[u8; 4], body: &[u8]| {
+      let mut out = (body.len() as u32).to_be_bytes().to_vec();
+      out.extend_from_slice(kind);
+      out.extend_from_slice(body);
+      out.extend_from_slice(&[0, 0, 0, 0]);
+      out
+    };
+    let mut header = width.to_be_bytes().to_vec();
+    header.extend_from_slice(&height.to_be_bytes());
+    header.extend_from_slice(&[8, color_type, 0, 0, 0]);
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend(chunk(b"IHDR", &header));
+    for (kind, body) in extra {
+      bytes.extend(chunk(kind, body));
+    }
+    bytes.extend(chunk(b"IDAT", &miniz_oxide::deflate::compress_to_vec_zlib(rows, 6)));
+    bytes.extend(chunk(b"IEND", &[]));
+    bytes
+  }
+
+  #[test]
+  fn every_sips_colour_type_decodes_to_rgb() {
+    // 2x1 pixels: grey 10 and 200; rgb (1,2,3) and (4,5,6); alpha is dropped.
+    let grey = decode_png(&png(0, 2, 1, &[0, 10, 200], &[])).expect("grey");
+    assert_eq!(grey.rgb, [10, 10, 10, 200, 200, 200]);
+    let grey_alpha = decode_png(&png(4, 2, 1, &[0, 10, 255, 200, 0], &[])).expect("grey+alpha");
+    assert_eq!(grey_alpha.rgb, [10, 10, 10, 200, 200, 200]);
+    let rgb = decode_png(&png(2, 2, 1, &[0, 1, 2, 3, 4, 5, 6], &[])).expect("rgb");
+    assert_eq!((rgb.width, rgb.height, rgb.rgb), (2, 1, vec![1, 2, 3, 4, 5, 6]));
+    let rgba = decode_png(&png(6, 2, 1, &[0, 1, 2, 3, 9, 4, 5, 6, 9], &[])).expect("rgba");
+    assert_eq!(rgba.rgb, [1, 2, 3, 4, 5, 6]);
+  }
+
+  #[test]
+  fn a_palette_png_is_refused_not_read_as_grey() {
+    // Colour type 3 stores palette indexes, and the decoder carries no PLTE.
+    // Reading the indexes as grey levels gave a near-black palette for a red
+    // and blue picture. sips never writes type 3 for the 32px sample (every
+    // `sips -Z 32` output of a palette PNG came back as type 2), so refusing
+    // takes the same "no sample" path a damaged file takes.
+    let palette = png(3, 2, 1, &[0, 0, 1], &[(b"PLTE", vec![255, 0, 0, 0, 0, 255])]);
+    assert!(decode_png(&palette).is_none());
+  }
+
+  #[test]
+  fn gradient_palette_is_stable() {
+    // Pinned from the k-means as first written; a change here is a change in
+    // what every indexed picture reports.
+    let sample: Vec<Rgb> = (0..32 * 32)
+      .map(|i| {
+        let (x, y) = ((i % 32) as f64 / 31.0, (i / 32) as f64 / 31.0);
+        Rgb { r: x, g: y * 0.6, b: 0.8 - x * 0.5 }
+      })
+      .collect();
+    let colors: Vec<(String, f64)> = dominant_colors(&sample, 0.10, 3).into_iter().map(|c| (c.hex, c.share)).collect();
+    assert_eq!(
+      colors,
+      [("#3231b6".to_string(), 0.212), ("#d53663".to_string(), 0.192), ("#85338a".to_string(), 0.177)]
+    );
   }
 
   #[test]
