@@ -3,21 +3,36 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
+/// What the filter menu sends (src/lib/types.ts Filter). An empty string or a
+/// zero means the field is not narrowing.
 #[derive(Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Filter {
   pub kinds: Vec<String>,
-  pub orientation: Option<String>,
   pub min_width: Option<u32>,
-  pub max_width: Option<u32>,
-  pub min_height: Option<u32>,
-  pub max_height: Option<u32>,
-  pub from: Option<i64>,
-  pub to: Option<i64>,
   pub color: Option<String>,
   pub folder: Option<String>,
   pub min_rating: Option<u8>,
   pub tag: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct SearchArgs {
+  query: String,
+  sort: Option<String>,
+  semantic: Option<bool>,
+  filter: Filter,
+  /// Swatch hexes to count files for, in the order the counts come back.
+  count_colors: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SimilarArgs {
+  rel_path: String,
+  #[serde(default)]
+  limit: Option<usize>,
 }
 
 fn bigrams(word: &str) -> Vec<String> {
@@ -83,31 +98,6 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
       return false;
     }
   }
-  if let Some(max) = filter.max_width.filter(|m| *m > 0) {
-    if entry.width.unwrap_or(u32::MAX) > max {
-      return false;
-    }
-  }
-  if let Some(min) = filter.min_height.filter(|m| *m > 0) {
-    if entry.height.unwrap_or(0) < min {
-      return false;
-    }
-  }
-  if let Some(max) = filter.max_height.filter(|m| *m > 0) {
-    if entry.height.unwrap_or(u32::MAX) > max {
-      return false;
-    }
-  }
-  if let Some(from) = filter.from.filter(|v| *v > 0) {
-    if entry.modified < from {
-      return false;
-    }
-  }
-  if let Some(to) = filter.to.filter(|v| *v > 0) {
-    if entry.modified > to {
-      return false;
-    }
-  }
   if let Some(rating) = filter.min_rating.filter(|r| *r > 0) {
     if entry.meta.rating < rating {
       return false;
@@ -115,21 +105,6 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
   }
   if let Some(tag) = filter.tag.as_deref().filter(|t| !t.is_empty()) {
     if !entry.meta.tags.iter().any(|t| t == tag) {
-      return false;
-    }
-  }
-  if let Some(orientation) = filter.orientation.as_deref().filter(|o| !o.is_empty()) {
-    let (w, h) = (entry.width.unwrap_or(0), entry.height.unwrap_or(0));
-    let actual = if w == 0 || h == 0 {
-      ""
-    } else if w > h {
-      "landscape"
-    } else if h > w {
-      "portrait"
-    } else {
-      "square"
-    };
-    if actual != orientation {
       return false;
     }
   }
@@ -201,11 +176,11 @@ fn fuse(keyword: &[String], semantic: &[String], limit: usize) -> Vec<String> {
 }
 
 pub fn run(args: &Value) -> Result<Value, String> {
-  let query = args.get("query").and_then(Value::as_str).unwrap_or("").trim().to_string();
-  let sort = args.get("sort").and_then(Value::as_str).unwrap_or("name").to_string();
-  let want_semantic = args.get("semantic").and_then(Value::as_bool).unwrap_or(true);
-  let filter: Filter = serde_json::from_value(args.get("filter").cloned().unwrap_or(json!({})))
-    .unwrap_or_default();
+  let SearchArgs { query, sort, semantic, filter, count_colors } =
+    serde_json::from_value(args.clone()).map_err(|e| format!("search: {e}"))?;
+  let query = query.trim().to_string();
+  let sort = sort.unwrap_or_else(|| "name".into());
+  let want_semantic = semantic.unwrap_or(true);
   let started = std::time::Instant::now();
   // Before the engine lock: a model that idled out takes ~3 s to come back.
   let model_ready =
@@ -214,11 +189,9 @@ pub fn run(args: &Value) -> Result<Value, String> {
   let engine = guard.as_ref().ok_or("no vault open")?;
   // Swatch counts use every filter but colour, so each swatch says how many
   // files picking it would leave.
-  let swatches: Vec<String> = serde_json::from_value(args.get("countColors").cloned().unwrap_or(json!([])))
-    .unwrap_or_default();
   let other_filters = Filter { color: None, ..filter.clone() };
   let base: Vec<Entry> = all_entries(engine).into_iter().filter(|e| passes(e, &other_filters)).collect();
-  let color_counts: Vec<usize> = swatches
+  let color_counts: Vec<usize> = count_colors
     .iter()
     .map(|hex| base.iter().filter(|entry| color::palette_matches(&entry.colors, hex)).count())
     .collect();
@@ -286,12 +259,13 @@ pub fn run(args: &Value) -> Result<Value, String> {
 }
 
 pub fn similar(args: &Value) -> Result<Value, String> {
-  let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(24) as usize;
+  let SimilarArgs { rel_path: rel, limit } =
+    serde_json::from_value(args.clone()).map_err(|e| format!("similar: {e}"))?;
+  let limit = limit.unwrap_or(24);
   let guard = ENGINE.lock().expect("engine lock");
   let engine = guard.as_ref().ok_or("no vault open")?;
-  let target = crate::entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
-  let target_image = engine.vectors.vector(rel);
+  let target = crate::entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
+  let target_image = engine.vectors.vector(&rel);
   let entries: Vec<Entry> = engine.files.iter().filter_map(|f| crate::entry_view(engine, &f.rel_path)).collect();
   let mut rows: Vec<(String, f64, f64, f64)> = Vec::new();
   for entry in &entries {
@@ -399,14 +373,39 @@ mod tests {
     let item = entry("海边.png", "摄影/海边.png", &[], "");
     let mut filter = Filter { kinds: vec!["video".into()], ..Default::default() };
     assert!(!passes(&item, &filter));
-    filter = Filter { orientation: Some("portrait".into()), ..Default::default() };
-    assert!(!passes(&item, &filter));
     filter = Filter { min_width: Some(2000), ..Default::default() };
     assert!(!passes(&item, &filter));
     filter = Filter { color: Some("#1b1b1f".into()), ..Default::default() };
     assert!(passes(&item, &filter));
     filter = Filter { color: Some("#00ff00".into()), ..Default::default() };
     assert!(!passes(&item, &filter));
+  }
+
+  #[test]
+  fn the_requests_the_bridge_sends_parse() {
+    // src/lib/bridge.ts api.search, with emptyFilter from src/lib/types.ts.
+    let full = json!({
+      "query": " 海边 ",
+      "filter": { "kinds": ["image"], "minWidth": 0, "minRating": 0, "color": "", "folder": "", "tag": "" },
+      "sort": "modified",
+      "semantic": false,
+      "countColors": ["#1b1b1b", "#3065be"],
+    });
+    let parsed: SearchArgs = serde_json::from_value(full).expect("full request");
+    assert_eq!(parsed.query, " 海边 ");
+    assert_eq!(parsed.sort.as_deref(), Some("modified"));
+    assert_eq!(parsed.semantic, Some(false));
+    assert_eq!(parsed.filter.kinds, vec!["image"]);
+    assert_eq!(parsed.filter.color.as_deref(), Some(""));
+    assert_eq!(parsed.count_colors.len(), 2);
+
+    let bare: SearchArgs = serde_json::from_value(json!({})).expect("every field has a default");
+    assert_eq!(bare.query, "");
+    assert!(bare.sort.is_none() && bare.semantic.is_none() && bare.count_colors.is_empty());
+
+    let similar: SimilarArgs = serde_json::from_value(json!({ "relPath": "a.png", "limit": 24 })).expect("similar");
+    assert_eq!((similar.rel_path.as_str(), similar.limit), ("a.png", Some(24)));
+    assert!(serde_json::from_value::<SimilarArgs>(json!({ "limit": 3 })).is_err(), "relPath is required");
   }
 
   #[test]
