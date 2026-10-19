@@ -83,13 +83,16 @@ function metaOf(entry: Entry): EntryMeta {
   return { tags: entry.tags, rating: entry.rating, note: entry.note, source: entry.source };
 }
 
-/** Fresh entries from disk, except that an edit still being written keeps its local value. */
+/** A fresh entry from disk, except that an edit still being written keeps its local value. */
+function adopt(entry: Entry, byPath: Record<string, Entry>, saving: Record<string, Saving>): Entry {
+  const local = saving[entry.relPath] ? byPath[entry.relPath] : undefined;
+  return local ? { ...entry, ...metaOf(local) } : entry;
+}
+
+/** Adds fresh entries to the ones held: a search answer lists only some files. */
 function merge(byPath: Record<string, Entry>, fresh: Entry[], saving: Record<string, Saving>): Record<string, Entry> {
   const next = { ...byPath };
-  for (const entry of fresh) {
-    const local = saving[entry.relPath] ? byPath[entry.relPath] : undefined;
-    next[entry.relPath] = local ? { ...entry, ...metaOf(local) } : entry;
-  }
+  for (const entry of fresh) next[entry.relPath] = adopt(entry, byPath, saving);
   return next;
 }
 
@@ -106,7 +109,8 @@ function libraryOf(view: VaultView, saving: Record<string, Saving>, previous: Li
     root: view.root,
     folders: view.folders,
     scope: view.scope,
-    byPath: merge(previous?.byPath ?? {}, view.entries, saving),
+    // A view lists every file, so a file missing from it is gone.
+    byPath: Object.fromEntries(view.entries.map((entry) => [entry.relPath, adopt(entry, previous?.byPath ?? {}, saving)])),
     counts,
   };
 }
