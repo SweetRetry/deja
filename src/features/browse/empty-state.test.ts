@@ -22,7 +22,7 @@ test("a search with no hits names the query", () => {
 });
 
 test("a search under filters clears both", () => {
-  const filter = { ...emptyFilter, kinds: ["video"] };
+  const filter = { ...emptyFilter, kinds: ["video" as const] };
   assert.deepEqual(emptyState({ ...base, query: "x", filter }), {
     title: "没有匹配的素材",
     body: "可换一种描述，或放宽筛选条件。",
@@ -31,13 +31,13 @@ test("a search under filters clears both", () => {
 });
 
 test("a kind filter names the kind and the count it restores", () => {
-  const filter = { ...emptyFilter, kinds: ["video"] };
+  const filter = { ...emptyFilter, kinds: ["video" as const] };
   assert.deepEqual(emptyState({ ...base, filter }), {
     title: "此文件夹中没有视频",
     body: "重置筛选后显示全部 12 项素材。",
     action: "clear-filters",
   });
-  assert.equal(emptyState({ ...base, filter: { ...emptyFilter, kinds: ["image"] } }).title, "此文件夹中没有图片");
+  assert.equal(emptyState({ ...base, filter: { ...emptyFilter, kinds: ["image" as const] } }).title, "此文件夹中没有图片");
 });
 
 test("a color filter alone names the color", () => {
@@ -51,7 +51,7 @@ test("a color filter alone names the color", () => {
 });
 
 test("mixed filters get the generic wording; folder and tag scope do not count", () => {
-  const mixed = { ...emptyFilter, kinds: ["video"], minRating: 4 };
+  const mixed = { ...emptyFilter, kinds: ["video" as const], minRating: 4 };
   assert.deepEqual(emptyState({ ...base, filter: mixed }), {
     title: "没有符合筛选条件的素材",
     body: "重置筛选后显示全部 12 项素材。",

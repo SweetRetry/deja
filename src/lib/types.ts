@@ -7,11 +7,13 @@ export type EntryMeta = {
   source: string | null;
 };
 
+export type Kind = "image" | "video";
+
 export type Entry = EntryMeta & {
   relPath: string;
   name: string;
   ext: string;
-  kind: "image" | "video";
+  kind: Kind;
   sizeBytes: number;
   modified: number;
   width: number | null;
@@ -57,7 +59,7 @@ export type Sort = "name" | "modified" | "size" | "rating";
 export type Ranking = "semantic" | "keyword";
 
 export type Filter = {
-  kinds: string[];
+  kinds: Kind[];
   minWidth: number;
   minRating: number;
   color: string;
