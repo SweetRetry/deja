@@ -104,6 +104,7 @@ pub enum Transition {
   BecameReady,
   BecameUnhealthy,
   Failed,
+  Stop,
 }
 
 pub fn advance(state: State, transition: Transition) -> State {
@@ -112,6 +113,9 @@ pub fn advance(state: State, transition: Transition) -> State {
     (State::Ready, Transition::BecameUnhealthy) => State::Stopped,
     (State::Starting, Transition::Failed) => State::Failed,
     (State::Stopped | State::Failed, Transition::Spawn) => State::Starting,
+    // A start in progress is left alone; it idles out on its own.
+    (State::Starting, Transition::Stop) => State::Starting,
+    (_, Transition::Stop) => State::Stopped,
     // A spawn while starting or ready would be a second model process.
     (other, _) => other,
   }
@@ -166,13 +170,10 @@ pub fn ready_or_restart() -> bool {
 }
 
 /// Frees the model's memory now. Closing its stdin is the sidecar's exit
-/// signal; a start in progress is left alone and idles out on its own.
+/// signal; a start in progress keeps its stdin (see `advance`).
 pub fn stop() {
-  if let Ok(mut guard) = STATE.lock() {
-    if *guard == State::Starting {
-      return;
-    }
-    *guard = State::Stopped;
+  if transition(Transition::Stop) == State::Starting {
+    return;
   }
   if let Ok(mut lifeline) = LIFELINE.lock() {
     lifeline.take();
@@ -325,6 +326,9 @@ mod tests {
     assert_eq!(advance(State::Ready, Transition::Spawn), State::Ready, "ready never spawns again");
     assert_eq!(advance(State::Starting, Transition::BecameReady), State::Ready);
     assert_eq!(advance(State::Ready, Transition::BecameUnhealthy), State::Stopped, "an idle exit is noticed");
+    assert_eq!(advance(State::Ready, Transition::Stop), State::Stopped);
+    assert_eq!(advance(State::Failed, Transition::Stop), State::Stopped);
+    assert_eq!(advance(State::Starting, Transition::Stop), State::Starting, "a start in progress is left alone");
   }
 
   /// Tests that drive the process-wide STATE take this lock so they do not
