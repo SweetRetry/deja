@@ -277,11 +277,12 @@ pub fn decode_png(bytes: &[u8]) -> Option<Image> {
   }
   let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
   for pixel in pixels.chunks_exact(channels) {
-    match channels {
-      1 => rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]),
-      2 => rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]),
-      3 => rgb.extend_from_slice(&pixel[0..3]),
-      _ => rgb.extend_from_slice(&pixel[0..3]),
+    // Grey (with or without alpha) is spread over three channels; colour
+    // keeps its first three and drops alpha.
+    if channels < 3 {
+      rgb.extend_from_slice(&[pixel[0], pixel[0], pixel[0]]);
+    } else {
+      rgb.extend_from_slice(&pixel[0..3]);
     }
   }
   Some(Image { width, height, rgb })
@@ -328,6 +329,20 @@ impl Lcg {
   }
 }
 
+/// Index of the centre closest to `lab`; the first wins a tie.
+fn nearest(centers: &[Oklab], lab: Oklab) -> usize {
+  let mut best = 0;
+  let mut best_distance = f64::MAX;
+  for (j, center) in centers.iter().enumerate() {
+    let d = distance(lab, *center);
+    if d < best_distance {
+      best_distance = d;
+      best = j;
+    }
+  }
+  best
+}
+
 /// k-means in OKLab over the 32x32 sample. Colors under 10% are dropped, so a
 /// monochrome poster reports one color and a sunset reports three.
 pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec<ColorShare> {
@@ -346,16 +361,7 @@ pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec
   for _ in 0..12 {
     let mut groups: Vec<Vec<usize>> = vec![Vec::new(); centers.len()];
     for (i, lab) in labs.iter().enumerate() {
-      let mut best = 0;
-      let mut best_distance = f64::MAX;
-      for (j, center) in centers.iter().enumerate() {
-        let d = distance(*lab, *center);
-        if d < best_distance {
-          best_distance = d;
-          best = j;
-        }
-      }
-      groups[best].push(i);
+      groups[nearest(&centers, *lab)].push(i);
     }
     for (j, group) in groups.iter().enumerate() {
       if group.is_empty() {
@@ -371,22 +377,12 @@ pub fn dominant_colors(sample: &[Rgb], min_share: f64, max_colors: usize) -> Vec
       centers[j] = Oklab { l: sum.l / n, a: sum.a / n, b: sum.b / n };
     }
   }
-  let mut buckets: Vec<(Oklab, f64)> = Vec::new();
-  for lab in &labs {
-    let mut best = 0;
-    let mut best_distance = f64::MAX;
-    for (j, center) in centers.iter().enumerate() {
-      let d = distance(*lab, *center);
-      if d < best_distance {
-        best_distance = d;
-        best = j;
-      }
-    }
-    buckets.push((centers[best], 0.0));
-  }
+  // Each sample adds its share to its centre; centres that ended up on top of
+  // each other count as one colour.
   let total = labs.len() as f64;
   let mut merged: Vec<(Oklab, f64)> = Vec::new();
-  for (center, _) in buckets {
+  for lab in &labs {
+    let center = centers[nearest(&centers, *lab)];
     match merged.iter_mut().find(|(c, _)| distance(*c, center) < 0.03) {
       Some((_, share)) => *share += 1.0 / total,
       None => merged.push((center, 1.0 / total)),
@@ -533,6 +529,58 @@ mod tests {
     let lab = hex_to_oklab("#ffffff").expect("valid hex");
     assert!((lab.l - 1.0).abs() < 0.01);
     assert!(hex_to_oklab("bogus").is_none());
+  }
+
+  /// A one-IDAT, filter-0 PNG. CRCs are zero: the decoder never checks them.
+  fn png(color_type: u8, width: u32, height: u32, rows: &[u8], extra: &[(&[u8; 4], Vec<u8>)]) -> Vec<u8> {
+    let chunk = |kind: &[u8; 4], body: &[u8]| {
+      let mut out = (body.len() as u32).to_be_bytes().to_vec();
+      out.extend_from_slice(kind);
+      out.extend_from_slice(body);
+      out.extend_from_slice(&[0, 0, 0, 0]);
+      out
+    };
+    let mut header = width.to_be_bytes().to_vec();
+    header.extend_from_slice(&height.to_be_bytes());
+    header.extend_from_slice(&[8, color_type, 0, 0, 0]);
+    let mut bytes = b"\x89PNG\r\n\x1a\n".to_vec();
+    bytes.extend(chunk(b"IHDR", &header));
+    for (kind, body) in extra {
+      bytes.extend(chunk(kind, body));
+    }
+    bytes.extend(chunk(b"IDAT", &miniz_oxide::deflate::compress_to_vec_zlib(rows, 6)));
+    bytes.extend(chunk(b"IEND", &[]));
+    bytes
+  }
+
+  #[test]
+  fn every_sips_colour_type_decodes_to_rgb() {
+    // 2x1 pixels: grey 10 and 200; rgb (1,2,3) and (4,5,6); alpha is dropped.
+    let grey = decode_png(&png(0, 2, 1, &[0, 10, 200], &[])).expect("grey");
+    assert_eq!(grey.rgb, [10, 10, 10, 200, 200, 200]);
+    let grey_alpha = decode_png(&png(4, 2, 1, &[0, 10, 255, 200, 0], &[])).expect("grey+alpha");
+    assert_eq!(grey_alpha.rgb, [10, 10, 10, 200, 200, 200]);
+    let rgb = decode_png(&png(2, 2, 1, &[0, 1, 2, 3, 4, 5, 6], &[])).expect("rgb");
+    assert_eq!((rgb.width, rgb.height, rgb.rgb), (2, 1, vec![1, 2, 3, 4, 5, 6]));
+    let rgba = decode_png(&png(6, 2, 1, &[0, 1, 2, 3, 9, 4, 5, 6, 9], &[])).expect("rgba");
+    assert_eq!(rgba.rgb, [1, 2, 3, 4, 5, 6]);
+  }
+
+  #[test]
+  fn gradient_palette_is_stable() {
+    // Pinned from the k-means as first written; a change here is a change in
+    // what every indexed picture reports.
+    let sample: Vec<Rgb> = (0..32 * 32)
+      .map(|i| {
+        let (x, y) = ((i % 32) as f64 / 31.0, (i / 32) as f64 / 31.0);
+        Rgb { r: x, g: y * 0.6, b: 0.8 - x * 0.5 }
+      })
+      .collect();
+    let colors: Vec<(String, f64)> = dominant_colors(&sample, 0.10, 3).into_iter().map(|c| (c.hex, c.share)).collect();
+    assert_eq!(
+      colors,
+      [("#3231b6".to_string(), 0.212), ("#d53663".to_string(), 0.192), ("#85338a".to_string(), 0.177)]
+    );
   }
 
   #[test]
