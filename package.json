@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "e2e": "npm run e2e:build && playwright test",
     "tauri": "tauri",
+    "install:app": "sh scripts/install-app.sh",
     "e2e:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin deja-e2e --features e2e",
     "e2e:api": "DEJA_DATA_DIR=.e2e-data src-tauri/target/debug/deja-e2e",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
