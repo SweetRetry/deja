@@ -29,10 +29,8 @@ export function IndexStatus() {
   // A passing hint rides on the label, so the footer never changes height; only
   // a failure that needs a click gets its own line (IndexNotice).
   const hint = status.notice && !status.notice.retry ? status.notice.text : null;
-  const labelClass = "min-w-0 flex-1 truncate";
-  const label = <span className={labelClass} data-testid="index-status" />;
-  const text = (
-    <>
+  const label = (
+    <span className="min-w-0 flex-1 truncate" data-testid="index-status">
       {status.label}
       {status.count ? (
         <>
@@ -40,7 +38,7 @@ export function IndexStatus() {
           <RollingNumber value={status.count.done} />/{status.count.total}
         </>
       ) : null}
-    </>
+    </span>
   );
 
   return (
@@ -48,13 +46,11 @@ export function IndexStatus() {
       <StatusDot tone={status.tone} />
       {hint ? (
         <Tooltip>
-          <TooltipTrigger render={label}>{text}</TooltipTrigger>
+          <TooltipTrigger render={label} />
           <TooltipContent>{hint}</TooltipContent>
         </Tooltip>
       ) : (
-        <span className={labelClass} data-testid="index-status">
-          {text}
-        </span>
+        label
       )}
       <Tooltip>
         <TooltipTrigger
@@ -83,11 +79,9 @@ export function IndexNotice() {
   return (
     <div className="flex flex-col items-start gap-1">
       <p className="text-xs text-muted-foreground">{notice.text}</p>
-      {notice.retry ? (
-        <Button variant="ghost" size="sm" className="-ml-2" onClick={() => void warmModel()}>
-          重新启动模型
-        </Button>
-      ) : null}
+      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => void warmModel()}>
+        重新启动模型
+      </Button>
     </div>
   );
 }
