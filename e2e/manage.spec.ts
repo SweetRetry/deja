@@ -159,3 +159,19 @@ test("侧栏新建文件夹，空文件夹可在侧栏隐藏", async ({ page }) 
   await page.keyboard.press("Escape");
   await expect(folderRow(page, "待整理")).toBeVisible();
 });
+
+test("把素材拖到侧栏的文件夹里移动，已选中的一起走", async ({ page }) => {
+  await openVault(page);
+  // A tile outside the picked set drags alone.
+  await tile(page, OTHER).dragTo(folderRow(page, "海报"));
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("已将「逆光-03.jpg」移到「海报」");
+  expect(existsSync(join(vault, "海报/逆光-03.jpg"))).toBe(true);
+
+  await tile(page, "海报/逆光-03.jpg").click();
+  await tile(page, ORIGINAL).click({ modifiers: ["ControlOrMeta"] });
+  await tile(page, COPY).click({ modifiers: ["ControlOrMeta"] });
+  await expect(panel(page)).toHaveAttribute("data-picked-count", "3");
+  await tile(page, COPY).dragTo(folderRow(page, "登录页"));
+  await expect(page.locator('[data-sonner-toast][data-type="success"]', { hasText: "已将 3 项素材移到「登录页」" })).toBeVisible();
+  expect(existsSync(join(vault, "UI参考/登录页/逆光-03.jpg"))).toBe(true);
+});

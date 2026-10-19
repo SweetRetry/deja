@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
 import { clickTile, openViewer, select } from "@/features/browse/commands";
+import { dragEntries } from "@/features/browse/drag";
 import { useSession } from "@/app/store";
 import { GROW, mediaLayoutId, SWAP } from "@/features/viewer/shared";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -149,6 +150,9 @@ export const Tile = memo(function Tile({
       onContextMenu={() => {
         if (!picked) select(relPath);
       }}
+      // The button is the drag source, so a playing clip drags as well as a still.
+      draggable
+      onDragStart={(event) => dragEntries(event.dataTransfer, relPath)}
       onPointerEnter={arm}
       onPointerMove={arm}
       onPointerLeave={stop}

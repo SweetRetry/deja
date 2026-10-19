@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretRightIcon, CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
-import { clearLens, createFolder, findDuplicates, patchFilter } from "@/features/browse/commands";
+import { clearLens, createFolder, findDuplicates, moveEntries, patchFilter } from "@/features/browse/commands";
+import { carriesEntries, droppedEntries } from "@/features/browse/drag";
 import { setPreferences, usePreferences } from "@/features/settings/preferences";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -106,23 +107,58 @@ function FolderActions({ onCreate }: { onCreate: () => void }) {
   );
 }
 
+/** How long a dragged file rests on a shut folder before it opens. */
+const DRAG_OPEN_DELAY = 600;
+
+/** A folder row that takes files dragged from the wall. `dragover` repeats
+ *  while the pointer is held, so hover is "a dragover in the last 150 ms"
+ *  instead of counting enter and leave pairs, which child elements unbalance. */
 function FolderButton({
   row,
   active,
   inset,
   count,
   onOpen,
+  onHover,
 }: {
   row: FolderRow;
   active: boolean;
   inset: number;
   count: number;
   onOpen: () => void;
+  onHover: () => void;
 }) {
+  const [over, setOver] = useState(false);
+  const idle = useRef<number | undefined>(undefined);
+  const opening = useRef<number | undefined>(undefined);
+  const end = () => {
+    window.clearTimeout(idle.current);
+    window.clearTimeout(opening.current);
+    opening.current = undefined;
+    setOver(false);
+  };
+  useEffect(() => end, []);
   return (
     <SidebarMenuButton
       isActive={active}
       onClick={onOpen}
+      onDragOver={(event) => {
+        if (!carriesEntries(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setOver(true);
+        window.clearTimeout(idle.current);
+        idle.current = window.setTimeout(end, 150);
+        opening.current ??= window.setTimeout(onHover, DRAG_OPEN_DELAY);
+      }}
+      onDrop={(event) => {
+        if (!carriesEntries(event.dataTransfer)) return;
+        event.preventDefault();
+        end();
+        void moveEntries(droppedEntries(event.dataTransfer), row.rel);
+      }}
+      data-drop-target={over ? "true" : undefined}
+      className={over ? "bg-sidebar-accent ring-1 ring-sidebar-ring" : undefined}
       style={{ paddingLeft: inset }}
       // The tooltip only shows while the sidebar is collapsed; a cut-off name still reads in full.
       title={row.name}
@@ -211,6 +247,7 @@ export function FolderNav() {
                       inset={8 + gutter + row.depth * INDENT}
                       count={counts?.[row.rel] ?? 0}
                       onOpen={() => openFolder(row.rel)}
+                      onHover={() => setToggled((state) => (row.hasChildren && !row.expanded ? { ...state, [row.rel]: true } : state))}
                     />
                   </ContextMenuTrigger>
                   {/* Focus stays with the name field the item opens, not back on the row. */}
