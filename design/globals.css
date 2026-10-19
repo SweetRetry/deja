@@ -4,6 +4,8 @@
    Dark is the default: put class="dark" on <html>. */
 
 @import "tailwindcss";
+/* animate-in, fade-in-0, zoom-in-95, slide-in-from-* on popovers, menus and tooltips. */
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
