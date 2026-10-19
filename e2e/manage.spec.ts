@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { cpSync, existsSync, statSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SCRATCH_TRASH } from "./scratch-trash";
@@ -108,4 +108,54 @@ test("重复素材按组列出，选中多余副本后移到废纸篓", async ({
   expect(readdirSync(SCRATCH_TRASH)).toEqual(["黄昏逆光-02.jpg"]);
   await page.getByRole("button", { name: "返回全部素材" }).click();
   await expect(page.getByTestId("thumb")).toHaveCount(11);
+});
+
+const folderRow = (page: Page, name: string) =>
+  page.locator('[data-sidebar="menu-button"]').filter({ hasText: new RegExp(`^${name}\\s*\\d*$`) });
+
+test("侧栏新建文件夹，空文件夹可在侧栏隐藏", async ({ page }) => {
+  await openVault(page);
+  await page.getByRole("button", { name: "新建文件夹" }).click();
+  await page.getByLabel("新文件夹名称").fill("待整理");
+  await page.getByLabel("新文件夹名称").press("Enter");
+
+  // The wall opens the new folder, empty, and its row is the active one.
+  await expect(folderRow(page, "待整理")).toHaveAttribute("data-active");
+  expect(statSync(join(vault, "待整理")).isDirectory()).toBe(true);
+  await expect(page.getByTestId("thumb")).toHaveCount(0);
+
+  // The header button makes a top-level folder from inside another folder too,
+  // so a taken top-level name is refused and the field stays for another try.
+  await page.getByRole("button", { name: "新建文件夹" }).click();
+  await page.getByLabel("新文件夹名称").fill("海报");
+  await page.getByLabel("新文件夹名称").press("Enter");
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toContainText("同名");
+  await page.getByLabel("新文件夹名称").press("Escape");
+  await expect(page.getByLabel("新文件夹名称")).toHaveCount(0);
+
+  // Hidden empty folders keep the one being viewed until the wall leaves it.
+  await folderRow(page, "待整理").click();
+  await page.getByRole("button", { name: "文件夹选项" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "显示空文件夹" }).click();
+  await page.keyboard.press("Escape");
+  await expect(folderRow(page, "待整理")).toBeVisible();
+  await folderRow(page, "全部素材").click();
+  await expect(folderRow(page, "待整理")).toHaveCount(0);
+
+  // A subfolder from a folder's own menu; it opens even with empty folders hidden.
+  await folderRow(page, "海报").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "新建子文件夹" }).click();
+  await page.getByLabel("新文件夹名称").fill("旧稿");
+  await page.getByLabel("新文件夹名称").press("Enter");
+  await expect(folderRow(page, "旧稿")).toHaveAttribute("data-active");
+  expect(statSync(join(vault, "海报/旧稿")).isDirectory()).toBe(true);
+
+  // The setting and the sidebar menu are one switch.
+  await page.getByRole("button", { name: "设置" }).click();
+  const settings = page.getByTestId("settings");
+  const empty = settings.getByRole("group", { name: "空文件夹" });
+  await expect(empty.getByRole("button", { name: "隐藏" })).toHaveAttribute("aria-pressed", "true");
+  await empty.getByRole("button", { name: "显示" }).click();
+  await page.keyboard.press("Escape");
+  await expect(folderRow(page, "待整理")).toBeVisible();
 });

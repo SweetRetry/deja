@@ -1,7 +1,16 @@
-import { useMemo, useState } from "react";
-import { CaretRightIcon, CopyIcon, FolderSimpleIcon, ImagesIcon } from "@phosphor-icons/react";
+import { useMemo, useRef, useState } from "react";
+import { CaretRightIcon, CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
-import { clearLens, findDuplicates, patchFilter } from "@/features/browse/commands";
+import { clearLens, createFolder, findDuplicates, patchFilter } from "@/features/browse/commands";
+import { setPreferences, usePreferences } from "@/features/settings/preferences";
+import { Button } from "@/components/ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -10,8 +19,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Input } from "@/components/ui/input";
 import { RollingNumber } from "@/components/ui/rolling-number";
-import { folderRows, openAncestors } from "./folder-tree";
+import { folderRows, openAncestors, visibleFolders, type FolderRow } from "./folder-tree";
 
 const INDENT = 16;
 // Room for the chevron before the folder icon, so rows with and without
@@ -31,6 +41,99 @@ function Count({ value }: { value: number }) {
   );
 }
 
+/** Where a new folder's name is typed, in the row it will take: Enter makes
+ *  it, Esc or leaving it empty takes the row back. A refused name keeps the
+ *  row so it can be fixed. */
+function NewFolderRow({ parent, inset, onDone }: { parent: string; inset: number; onDone: () => void }) {
+  const [name, setName] = useState("");
+  // Set while a name is on its way and once the row is done, so the blur that
+  // follows an Enter or an Esc does not send it again.
+  const settled = useRef(false);
+  const finish = () => {
+    settled.current = true;
+    onDone();
+  };
+  const submit = async () => {
+    if (settled.current) return;
+    if (!name.trim()) return finish();
+    settled.current = true;
+    if (await createFolder(parent, name)) onDone();
+    else settled.current = false;
+  };
+  return (
+    <SidebarMenuItem>
+      <div className="flex h-8 items-center gap-2 pr-2" style={{ paddingLeft: inset }}>
+        <FolderSimpleIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <Input
+          autoFocus
+          aria-label="新文件夹名称"
+          placeholder="未命名文件夹"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) void submit();
+            if (event.key === "Escape") finish();
+          }}
+          onBlur={() => void submit()}
+          className="h-7 px-2"
+        />
+      </div>
+    </SidebarMenuItem>
+  );
+}
+
+function FolderActions({ onCreate }: { onCreate: () => void }) {
+  const showEmpty = usePreferences((p) => p.showEmptyFolders);
+  return (
+    <div className="ml-auto flex items-center">
+      <Button variant="ghost" size="icon-xs" aria-label="新建文件夹" title="新建文件夹" onClick={onCreate}>
+        <FolderSimplePlusIcon aria-hidden />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="文件夹选项" />}>
+          <DotsThreeIcon aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuCheckboxItem
+            checked={showEmpty}
+            onCheckedChange={(checked) => setPreferences({ showEmptyFolders: checked })}
+          >
+            显示空文件夹
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function FolderButton({
+  row,
+  active,
+  inset,
+  count,
+  onOpen,
+}: {
+  row: FolderRow;
+  active: boolean;
+  inset: number;
+  count: number;
+  onOpen: () => void;
+}) {
+  return (
+    <SidebarMenuButton
+      isActive={active}
+      onClick={onOpen}
+      style={{ paddingLeft: inset }}
+      // The tooltip only shows while the sidebar is collapsed; a cut-off name still reads in full.
+      title={row.name}
+    >
+      <FolderSimpleIcon aria-hidden />
+      <span className="truncate">{row.name}</span>
+      <Count value={count} />
+    </SidebarMenuButton>
+  );
+}
+
 export function FolderNav() {
   const folders = useSession((s) => s.vault.library?.folders);
   const counts = useSession((s) => s.vault.library?.counts);
@@ -45,8 +148,29 @@ export function FolderNav() {
     setShown(active);
     if (active !== null) setToggled((state) => openAncestors(state, active));
   }
-  const rows = useMemo(() => folderRows(folders ?? [], toggled), [folders, toggled]);
+  const showEmpty = usePreferences((p) => p.showEmptyFolders);
+  // The folder a new one goes in, while its name is being typed.
+  const [creating, setCreating] = useState<string | null>(null);
+  const listed = useMemo(
+    () => visibleFolders(folders ?? [], counts ?? {}, showEmpty, active),
+    [folders, counts, showEmpty, active],
+  );
+  const rows = useMemo(() => folderRows(listed, toggled), [listed, toggled]);
   const gutter = rows.some((row) => row.hasChildren) ? GUTTER : 0;
+  /** The header button makes a top-level folder; a row's menu makes one inside it. */
+  const startCreating = (parent: string) => {
+    if (parent) setToggled((state) => ({ ...openAncestors(state, parent), [parent]: true }));
+    setCreating(parent);
+  };
+  const newRow = (parent: string) =>
+    creating === parent ? (
+      <NewFolderRow
+        key={`new:${parent}`}
+        parent={parent}
+        inset={8 + gutter + (parent ? parent.split("/").length : 0) * INDENT}
+        onDone={() => setCreating(null)}
+      />
+    ) : null;
 
   return (
     <>
@@ -69,46 +193,53 @@ export function FolderNav() {
         </SidebarMenu>
       </SidebarGroup>
 
-      {rows.length > 0 ? (
-        <SidebarGroup>
-          <SidebarGroupLabel>文件夹</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {rows.map((row) => (
-                <SidebarMenuItem key={row.rel}>
-                  <SidebarMenuButton
-                    isActive={active === row.rel}
-                    onClick={() => openFolder(row.rel)}
-                    style={{ paddingLeft: 8 + gutter + row.depth * INDENT }}
-                    // The tooltip only shows while the sidebar is collapsed; a cut-off name still reads in full.
-                    title={row.name}
+      <SidebarGroup>
+        <SidebarGroupLabel className="pr-0">
+          文件夹
+          <FolderActions onCreate={() => startCreating("")} />
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {newRow("")}
+            {rows.map((row) => [
+              <SidebarMenuItem key={row.rel}>
+                <ContextMenu>
+                  <ContextMenuTrigger className="block">
+                    <FolderButton
+                      row={row}
+                      active={active === row.rel}
+                      inset={8 + gutter + row.depth * INDENT}
+                      count={counts?.[row.rel] ?? 0}
+                      onOpen={() => openFolder(row.rel)}
+                    />
+                  </ContextMenuTrigger>
+                  {/* Focus stays with the name field the item opens, not back on the row. */}
+                  <ContextMenuContent finalFocus={false}>
+                    <ContextMenuItem onClick={() => startCreating(row.rel)}>新建子文件夹</ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+                {/* After the row in the DOM, so the row stays the first button for this folder. */}
+                {row.hasChildren ? (
+                  <button
+                    type="button"
+                    aria-label={`${row.expanded ? "收起" : "展开"} ${row.name}`}
+                    aria-expanded={row.expanded}
+                    onClick={() => setToggled((state) => ({ ...state, [row.rel]: !row.expanded }))}
+                    style={{ left: 4 + row.depth * INDENT }}
+                    className="absolute top-1.5 flex size-5 items-center justify-center rounded-sm text-muted-foreground ring-sidebar-ring outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
                   >
-                    <FolderSimpleIcon aria-hidden />
-                    <span className="truncate">{row.name}</span>
-                    <Count value={counts?.[row.rel] ?? 0} />
-                  </SidebarMenuButton>
-                  {/* After the row in the DOM, so the row stays the first button for this folder. */}
-                  {row.hasChildren ? (
-                    <button
-                      type="button"
-                      aria-label={`${row.expanded ? "收起" : "展开"} ${row.name}`}
-                      aria-expanded={row.expanded}
-                      onClick={() => setToggled((state) => ({ ...state, [row.rel]: !row.expanded }))}
-                      style={{ left: 4 + row.depth * INDENT }}
-                      className="absolute top-1.5 flex size-5 items-center justify-center rounded-sm text-muted-foreground ring-sidebar-ring outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
-                    >
-                      <CaretRightIcon
-                        aria-hidden
-                        className={row.expanded ? "size-3 rotate-90 transition-transform" : "size-3 transition-transform"}
-                      />
-                    </button>
-                  ) : null}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ) : null}
+                    <CaretRightIcon
+                      aria-hidden
+                      className={row.expanded ? "size-3 rotate-90 transition-transform" : "size-3 transition-transform"}
+                    />
+                  </button>
+                ) : null}
+              </SidebarMenuItem>,
+              newRow(row.rel),
+            ])}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
     </>
   );
 }

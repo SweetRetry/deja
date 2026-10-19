@@ -102,6 +102,9 @@ pub struct Engine {
   pub vectors: vectors::Vectors,
   pub scope: scope::Scope,
   pub tree: Vec<scope::FolderCount>,
+  /// Every folder in scope, empty ones too, so the sidebar can list a folder
+  /// before anything is in it.
+  pub dirs: Vec<String>,
 }
 
 /// What the background work is doing right now. The UI mirrors this instead of
@@ -185,8 +188,8 @@ fn save_cache(dir: &Path, computed: &BTreeMap<String, Computed>) {
   );
 }
 
-fn folders_of(files: &[scan::RawFile]) -> Vec<String> {
-  let mut set = std::collections::BTreeSet::new();
+fn folders_of(files: &[scan::RawFile], dirs: &[String]) -> Vec<String> {
+  let mut set: std::collections::BTreeSet<String> = dirs.iter().cloned().collect();
   set.insert(String::new());
   for file in files {
     let parts: Vec<&str> = file.rel_path.split('/').collect();
@@ -254,7 +257,7 @@ fn snapshot(engine: &Engine, sort: &str) -> Value {
   json!({
     "root": engine.root.to_string_lossy(),
     "scope": { "chosen": engine.scope.chosen, "excluded": engine.scope.excluded, "tree": engine.tree },
-    "folders": folders_of(&engine.files),
+    "folders": folders_of(&engine.files, &engine.dirs),
     "entries": entries,
     "indexed": indexed,
     "embedded": embedded,
@@ -276,6 +279,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "reveal" => reveal(args),
     "trash_entries" => trash_entries(args),
     "move_entries" => move_entries(args),
+    "create_folder" => create_folder(args),
     "duplicates" => duplicates(),
     "refresh" => refresh(),
     "import" => import(args),
@@ -349,6 +353,7 @@ fn open_vault(args: &Value) -> Result<Value, String> {
     pending: Vec::new(),
     scope: scope::read(&expanded),
     tree: Vec::new(),
+    dirs: Vec::new(),
   };
   rescan(&mut engine)?;
   let sort = args.get("sort").and_then(Value::as_str).unwrap_or("name");
@@ -385,12 +390,14 @@ fn watch_folder(root: &Path) {
 /// Walks the whole vault: the tree and the caches follow what is on disk, and
 /// only files in scope become the engine's files and pending work.
 fn rescan(engine: &mut Engine) -> Result<(), String> {
-  let walked = scan::walk(&engine.root);
+  let (walked, dirs) = scan::walk_all(&engine.root);
   let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
   let keep_set: std::collections::BTreeSet<&String> = keep.iter().collect();
   engine.computed.retain(|rel, _| keep_set.contains(rel));
   engine.vectors.retain(&keep)?;
   engine.tree = scope::tree(&walked);
+  // A folder is in scope when what it holds would be.
+  engine.dirs = dirs.into_iter().filter(|dir| engine.scope.contains(&format!("{dir}/"))).collect();
   engine.files = walked.into_iter().filter(|f| engine.scope.contains(&f.rel_path)).collect();
   engine.pending = engine
     .files
@@ -563,6 +570,31 @@ fn move_entries(args: &Value) -> Result<Value, String> {
   save_cache(&engine.cache_dir, &engine.computed);
   let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
   Ok(json!({ "moved": moved, "view": snapshot(engine, "name") }))
+}
+
+/// Makes an empty folder inside a vault folder and rescans, so the reply
+/// already lists it. A name another folder or file holds is refused rather
+/// than numbered: the user typed it and should see why it did not land.
+fn create_folder(args: &Value) -> Result<Value, String> {
+  let parent = args.get("parent").and_then(Value::as_str).unwrap_or("").to_string();
+  let name = args.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+  // Finder shows ":" as "/", and a leading dot hides the folder from the walk.
+  if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
+    return Err(format!("{name} is not a valid folder name"));
+  }
+  let mut guard = ENGINE.lock().expect("engine lock");
+  let engine = guard.as_mut().ok_or("no vault open")?;
+  if !parent.is_empty() && !engine.dirs.contains(&parent) {
+    return Err(format!("{parent} is not in the vault"));
+  }
+  let rel = if parent.is_empty() { name.clone() } else { format!("{parent}/{name}") };
+  let dir = engine.root.join(&rel);
+  if dir.exists() {
+    return Err(format!("{rel} already exists"));
+  }
+  std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
+  rescan(engine)?;
+  Ok(json!({ "folder": rel, "view": snapshot(engine, "name") }))
 }
 
 /// Copies across the whole vault. Only files whose size another file shares are

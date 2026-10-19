@@ -15,6 +15,8 @@ export type Preferences = {
   layout: Layout;
   size: ThumbSize;
   showNames: boolean;
+  /** Folders with no image or video at any depth still get a sidebar row. */
+  showEmptyFolders: boolean;
   inspectorWidth: number;
   /** Lowest match (0–100) a semantic result needs to count; 0 lets every result through. */
   minMatch: number;
@@ -32,6 +34,7 @@ const DEFAULTS: Preferences = {
   layout: "masonry",
   size: "medium",
   showNames: false,
+  showEmptyFolders: true,
   inspectorWidth: INSPECTOR.initial,
   minMatch: 0,
   belowMatch: "dim",
@@ -47,6 +50,7 @@ function read(): Preferences {
       layout: stored.layout === "grid" ? "grid" : DEFAULTS.layout,
       size: stored.size === "small" || stored.size === "large" ? stored.size : DEFAULTS.size,
       showNames: stored.showNames === true,
+      showEmptyFolders: stored.showEmptyFolders !== false,
       inspectorWidth: width >= INSPECTOR.min && width <= INSPECTOR.max ? width : DEFAULTS.inspectorWidth,
       minMatch: minMatch >= 0 && minMatch <= 100 ? minMatch : DEFAULTS.minMatch,
       belowMatch: stored.belowMatch === "hide" ? "hide" : DEFAULTS.belowMatch,

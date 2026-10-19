@@ -103,5 +103,20 @@ export async function moveEntries(relPaths: string[], folder: string) {
     toast.error(humanError(problem));
   }
 }
+/** Makes an empty folder and opens it, so files can be moved or dropped in
+ *  next. False when it was refused; the toast says why. */
+export async function createFolder(parent: string, name: string): Promise<boolean> {
+  try {
+    const { folder, view } = await api.createFolder(parent, name);
+    dispatch({ type: "RESCANNED", view });
+    clearLens();
+    patchFilter({ folder });
+    return true;
+  } catch (problem) {
+    toast.error(humanError(problem));
+    return false;
+  }
+}
+
 export const openViewer = () => dispatch({ type: "VIEWER", open: true });
 export const closeViewer = () => dispatch({ type: "VIEWER", open: false });

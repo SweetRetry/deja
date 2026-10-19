@@ -36,7 +36,14 @@ fn modified_ms(path: &Path) -> i64 {
 /// Every image and video under `root`, whatever the vault's scope says; dot
 /// folders (`.git`, `.deja`) and the built-in list are never media.
 pub fn walk(root: &Path) -> Vec<RawFile> {
+  walk_all(root).0
+}
+
+/// The files `walk` finds, and every folder it went through below `root`,
+/// empty ones too, as sorted relative paths.
+pub fn walk_all(root: &Path) -> (Vec<RawFile>, Vec<String>) {
   let mut files = Vec::new();
+  let mut dirs = Vec::new();
   let mut stack = vec![root.to_path_buf()];
   while let Some(dir) = stack.pop() {
     let entries = match std::fs::read_dir(&dir) {
@@ -57,6 +64,9 @@ pub fn walk(root: &Path) -> Vec<RawFile> {
         continue;
       }
       if file_type.is_dir() {
+        if let Ok(rel) = path.strip_prefix(root) {
+          dirs.push(rel.to_string_lossy().replace('\\', "/"));
+        }
         stack.push(path);
         continue;
       }
@@ -82,5 +92,6 @@ pub fn walk(root: &Path) -> Vec<RawFile> {
     }
   }
   files.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
-  files
+  dirs.sort();
+  (files, dirs)
 }

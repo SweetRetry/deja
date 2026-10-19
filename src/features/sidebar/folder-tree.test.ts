@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { folderRows, moveTargets, openAncestors } from "./folder-tree.ts";
+import { folderRows, moveTargets, openAncestors, visibleFolders } from "./folder-tree.ts";
 
 const folders = ["", "海报", "海报/2024", "海报/2024/春", "人像"];
 
@@ -53,4 +53,13 @@ test("move targets list the root, then every folder open at its depth", () => {
     { rel: "摄影/人像/深", name: "深", depth: 3 },
     { rel: "海报", name: "海报", depth: 1 },
   ]);
+});
+
+test("empty folders hide unless shown, or unless the wall is in one", () => {
+  const all = ["", "海报", "海报/空", "海报/空/更深", "人像"];
+  const counts = { "": 3, 海报: 3, 人像: 0 };
+  assert.deepEqual(visibleFolders(all, counts, true, null), all);
+  assert.deepEqual(visibleFolders(all, counts, false, null), ["", "海报"]);
+  assert.deepEqual(visibleFolders(all, counts, false, "海报/空/更深"), ["", "海报", "海报/空", "海报/空/更深"]);
+  assert.deepEqual(visibleFolders(all, counts, false, "人像"), ["", "海报", "人像"]);
 });

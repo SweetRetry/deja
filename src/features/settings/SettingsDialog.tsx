@@ -84,6 +84,7 @@ function AppearanceSection() {
   const layout = usePreferences((p) => p.layout);
   const size = usePreferences((p) => p.size);
   const showNames = usePreferences((p) => p.showNames);
+  const showEmptyFolders = usePreferences((p) => p.showEmptyFolders);
   return (
     <Section title="外观">
       <Row label="主题">
@@ -101,6 +102,14 @@ function AppearanceSection() {
           options={NAMES}
           value={showNames}
           onChange={(next) => setPreferences({ showNames: next })}
+        />
+      </Row>
+      <Row label="空文件夹" hint="不含图片或视频的文件夹是否列在侧栏中。正在查看的文件夹始终列出。">
+        <Segmented
+          label="空文件夹"
+          options={NAMES}
+          value={showEmptyFolders}
+          onChange={(next) => setPreferences({ showEmptyFolders: next })}
         />
       </Row>
     </Section>

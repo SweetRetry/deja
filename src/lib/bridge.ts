@@ -66,6 +66,8 @@ export const api = {
   trash: (relPaths: string[]) =>
     call<{ trashed: string[]; error: string | null; view: VaultView }>("trash_entries", { relPaths }),
   move: (relPaths: string[], folder: string) => call<{ moved: Moved[]; view: VaultView }>("move_entries", { relPaths, folder }),
+  createFolder: (parent: string, name: string) =>
+    call<{ folder: string; view: VaultView }>("create_folder", { parent, name }),
   duplicates: () => call<{ groups: DuplicateGroup[] }>("duplicates"),
   selfcheck: () =>
     call<{ enabled: boolean; vault: string | null; out: string | null }>("selfcheck_requested"),

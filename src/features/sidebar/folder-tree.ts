@@ -37,6 +37,19 @@ export function folderRows(folders: string[], toggled: Record<string, boolean>):
     });
 }
 
+/** The folders the sidebar lists. With empty ones hidden, the folder being
+ *  viewed and those above it stay, so a new folder does not vanish as it opens. */
+export function visibleFolders(
+  folders: string[],
+  counts: Record<string, number>,
+  showEmpty: boolean,
+  viewing: string | null,
+): string[] {
+  if (showEmpty) return folders;
+  const kept = viewing === null ? "" : `${viewing}/`;
+  return folders.filter((rel) => (counts[rel] ?? 0) > 0 || kept.startsWith(`${rel}/`));
+}
+
 /** Opens every folder above `folder`, so the row the wall is showing is never
  *  hidden inside a shut parent (a locate can jump deep into the tree). */
 export function openAncestors(toggled: Record<string, boolean>, folder: string): Record<string, boolean> {

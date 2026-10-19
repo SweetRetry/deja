@@ -95,6 +95,23 @@ fn copies_are_found_then_moved_and_trashed_in_batches() {
   assert!(outside.unwrap_err().contains("is not in the vault"));
   assert!(small.exists(), "a batch with one bad path touches nothing");
 
+  // A new folder is listed while still empty, so files can move into it.
+  let made = dispatch("create_folder", &json!({ "parent": "摄影", "name": " 待整理 " })).expect("create");
+  assert_eq!(made["folder"], json!("摄影/待整理"));
+  assert!(vault.join("摄影/待整理").is_dir());
+  assert!(made["view"]["folders"].as_array().unwrap().contains(&json!("摄影/待整理")));
+  let again = dispatch("create_folder", &json!({ "parent": "摄影", "name": "待整理" }));
+  assert!(again.unwrap_err().contains("already exists"));
+  for bad in ["", "  ", ".隐藏", "a/b", "a:b"] {
+    let refused = dispatch("create_folder", &json!({ "parent": "", "name": bad }));
+    assert!(refused.unwrap_err().contains("is not a valid folder name"), "{bad:?}");
+  }
+  let escape = dispatch("create_folder", &json!({ "parent": "../elsewhere", "name": "x" }));
+  assert!(escape.unwrap_err().contains("is not in the vault"));
+  let filed = dispatch("move_entries", &json!({ "relPaths": ["摄影/风景/海边-小.jpg"], "folder": "摄影/待整理" }))
+    .expect("move into the new folder");
+  assert_eq!(filed["moved"], json!([{ "from": "摄影/风景/海边-小.jpg", "to": "摄影/待整理/海边-小.jpg" }]));
+
   for dir in [&vault, &data, &trash] {
     let _ = std::fs::remove_dir_all(dir);
   }
