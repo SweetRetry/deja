@@ -216,7 +216,8 @@ fn folders_of(files: &[scan::RawFile], dirs: &[String]) -> Vec<String> {
   set.into_iter().collect()
 }
 
-fn entry_from(file: &scan::RawFile, computed: Option<&Computed>, root: &Path, vectors: &vectors::Vectors) -> Entry {
+fn entry_from(engine: &Engine, file: &scan::RawFile) -> Entry {
+  let computed = engine.computed.get(&file.rel_path);
   Entry {
     rel_path: file.rel_path.clone(),
     name: file.name.clone(),
@@ -230,14 +231,14 @@ fn entry_from(file: &scan::RawFile, computed: Option<&Computed>, root: &Path, ve
     dhash: computed.map(|c| c.dhash.clone()).unwrap_or_default(),
     thumb_path: computed.and_then(|c| c.thumb_path.clone()),
     indexed: computed.is_some(),
-    embedded: vectors.has(&file.rel_path),
-    meta: meta::read(root, &file.rel_path),
+    embedded: engine.vectors.has(&file.rel_path),
+    meta: meta::read(&engine.root, &file.rel_path),
   }
 }
 
 pub fn entry_view(engine: &Engine, rel_path: &str) -> Option<Entry> {
   let file = engine.files.iter().find(|f| f.rel_path == rel_path)?;
-  Some(entry_from(file, engine.computed.get(&file.rel_path), &engine.root, &engine.vectors))
+  Some(entry_from(engine, file))
 }
 
 /// Files the embedder is done with: they have a vector, or they were derived
@@ -284,11 +285,7 @@ fn progress(engine: &Engine) -> Progress {
 /// The vault as the frontend first sees it. `sort` matches what the first
 /// search will answer with, so the wall does not reorder itself once that lands.
 fn snapshot(engine: &Engine, sort: &str) -> Value {
-  let mut entries: Vec<Entry> = engine
-    .files
-    .iter()
-    .map(|f| entry_from(f, engine.computed.get(&f.rel_path), &engine.root, &engine.vectors))
-    .collect();
+  let mut entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
   search::sort_static(&mut entries, sort);
   let progress = progress(engine);
   json!({
@@ -652,7 +649,7 @@ fn create_folder(args: &Value) -> Result<Value, String> {
 /// read, since only those can be byte copies.
 fn duplicates() -> Result<Value, String> {
   with_engine(|engine| {
-    let entries: Vec<Entry> = engine.files.iter().filter_map(|f| entry_view(engine, &f.rel_path)).collect();
+    let entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
     let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
     for file in &engine.files {
       *sizes.entry(file.size_bytes).or_default() += 1;
@@ -698,16 +695,16 @@ fn index_slice(args: &Value) -> Result<Value, String> {
 
     let mut embedded_now = 0usize;
     let mut embed_error: Option<String> = None;
-    // Only files with a thumbnail can be embedded; the rest would be retried forever.
-    let thumbs: BTreeMap<String, String> = engine
-      .files
-      .iter()
-      .filter_map(|file| {
-        let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
-        Some((file.rel_path.clone(), thumb))
-      })
-      .collect();
     if model_ready {
+      // Only files with a thumbnail can be embedded; the rest would be retried forever.
+      let thumbs: BTreeMap<String, String> = engine
+        .files
+        .iter()
+        .filter_map(|file| {
+          let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
+          Some((file.rel_path.clone(), thumb))
+        })
+        .collect();
       let paths: Vec<String> = thumbs.keys().cloned().collect();
       let items: Vec<model::Item> = engine
         .vectors

@@ -50,14 +50,10 @@ fn modified_ms(path: &Path) -> i64 {
     .unwrap_or(0)
 }
 
-/// Every image and video under `root`, whatever the vault's scope says; dot
-/// folders (`.git`, `.deja`) and the built-in list are never media.
-pub fn walk(root: &Path) -> Vec<RawFile> {
-  walk_all(root).0
-}
-
-/// The files `walk` finds, and every folder it went through below `root`,
-/// empty ones too, as sorted relative paths.
+/// Every image and video under `root`, whatever the vault's scope says, and
+/// every folder it went through below `root`, empty ones too, both sorted by
+/// relative path. Dot folders (`.git`, `.deja`) and the built-in list are
+/// never media.
 pub fn walk_all(root: &Path) -> (Vec<RawFile>, Vec<String>) {
   let mut files = Vec::new();
   let mut dirs = Vec::new();

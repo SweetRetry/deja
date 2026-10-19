@@ -35,7 +35,7 @@ fn temp_vault(name: &str) -> PathBuf {
 #[test]
 fn scans_the_fixture_vault_and_ignores_noise() {
   let vault = temp_vault("scan");
-  let files = scan::walk(&vault);
+  let files = scan::walk_all(&vault).0;
   let paths: Vec<String> = files.iter().map(|file| file.rel_path.clone()).collect();
 
   assert_eq!(files.len(), 12, "twelve images, got {paths:?}");
@@ -121,7 +121,7 @@ fn matches_the_shared_contract_file() {
     .map(|row| row["relPath"].as_str().expect("relPath").to_string())
     .collect();
   let vault = temp_vault("contract");
-  let actual: Vec<String> = scan::walk(&vault).iter().map(|file| file.rel_path.clone()).collect();
+  let actual: Vec<String> = scan::walk_all(&vault).0.iter().map(|file| file.rel_path.clone()).collect();
   assert_eq!(actual, expected, "the scanner and the e2e fixture describe the same vault");
   let _ = std::fs::remove_dir_all(&vault);
 }
@@ -155,7 +155,7 @@ fn metadata_round_trips_through_disk() {
 fn thumbnail_lands_on_disk_and_decodes() {
   let vault = temp_vault("thumb");
   let cache = vault.join(".cache");
-  let file = scan::walk(&vault)
+  let file = scan::walk_all(&vault).0
     .into_iter()
     .find(|file| file.rel_path == "摄影/风景/海边-dusk.jpg")
     .expect("fixture present");
