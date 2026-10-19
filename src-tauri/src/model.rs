@@ -87,17 +87,15 @@ pub fn healthy() -> bool {
   state() == State::Ready
 }
 
-/// Starts the sidecar if needed and waits until it answers. Returns the time
-/// the model took to come up, in milliseconds.
 /// The model process has four states and every caller goes through them.
 /// Without this, parallel callers each spawned a process: two lost the port and
 /// three copies of a 1.2 GB model sat in memory.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum State {
   Stopped,
   Starting,
   Ready,
-  Failed(String),
+  Failed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -108,15 +106,14 @@ pub enum Transition {
   Failed,
 }
 
-pub fn advance(state: &State, transition: Transition) -> State {
+pub fn advance(state: State, transition: Transition) -> State {
   match (state, transition) {
     (State::Starting, Transition::BecameReady) => State::Ready,
     (State::Ready, Transition::BecameUnhealthy) => State::Stopped,
-    (State::Starting, Transition::Failed) => State::Failed("model did not answer".into()),
-    (State::Stopped, Transition::Spawn) => State::Starting,
-    (State::Failed(_), Transition::Spawn) => State::Starting,
+    (State::Starting, Transition::Failed) => State::Failed,
+    (State::Stopped | State::Failed, Transition::Spawn) => State::Starting,
     // A spawn while starting or ready would be a second model process.
-    (other, _) => other.clone(),
+    (other, _) => other,
   }
 }
 
@@ -129,7 +126,7 @@ static STATE: std::sync::Mutex<State> = std::sync::Mutex::new(State::Stopped);
 static LIFELINE: std::sync::Mutex<Option<std::process::ChildStdin>> = std::sync::Mutex::new(None);
 
 fn current() -> State {
-  STATE.lock().map(|guard| guard.clone()).unwrap_or(State::Stopped)
+  STATE.lock().map(|guard| *guard).unwrap_or(State::Stopped)
 }
 
 fn set(state: State) {
@@ -138,25 +135,27 @@ fn set(state: State) {
   }
 }
 
+fn health_probe() -> bool {
+  request("/health", None, Duration::from_millis(600)).is_ok()
+}
+
 /// Health is cached in the state: a stopped model answers without a request,
 /// and a start in progress never answers "healthy" early.
 pub fn state() -> State {
+  refresh(&health_probe)
+}
+
+/// `state` with the probe passed in, so a test can stand in for the sidecar.
+fn refresh(healthy: &dyn Fn() -> bool) -> State {
   match STATE.try_lock() {
     Ok(mut guard) => {
-      let next = match &*guard {
-        State::Ready => {
-          if request("/health", None, Duration::from_millis(600)).is_ok() {
-            State::Ready
-          } else {
-            advance(&*guard, Transition::BecameUnhealthy)
-          }
-        }
-        other => other.clone(),
-      };
-      *guard = next.clone();
-      next
+      if *guard == State::Ready && !healthy() {
+        *guard = advance(*guard, Transition::BecameUnhealthy);
+      }
+      *guard
     }
-    // Someone is spawning right now.
+    // Another caller is probing right now; answer as if the model were still
+    // coming up, which no caller acts on.
     Err(_) => State::Starting,
   }
 }
@@ -168,7 +167,7 @@ pub fn ready_or_restart() -> bool {
   match state() {
     State::Ready => true,
     State::Stopped => ensure_started(Duration::from_secs(60)).is_ok(),
-    State::Starting | State::Failed(_) => false,
+    State::Starting | State::Failed => false,
   }
 }
 
@@ -186,14 +185,22 @@ pub fn stop() {
   }
 }
 
+/// Starts the sidecar if needed and waits until it answers. Returns the time
+/// the model took to come up, in milliseconds.
 pub fn ensure_started(timeout: Duration) -> Result<u128, String> {
-  match state() {
+  start(timeout, &spawn_sidecar, &health_probe)
+}
+
+/// `ensure_started` with its two effects passed in: how to spawn the process
+/// and how to ask whether it answers.
+fn start(timeout: Duration, spawn: &dyn Fn() -> Result<(), String>, healthy: &dyn Fn() -> bool) -> Result<u128, String> {
+  match refresh(healthy) {
     State::Ready => return Ok(0),
     State::Starting => {
       // Another caller owns the spawn; wait for it instead of starting a second.
       let started = Instant::now();
       while started.elapsed() < timeout {
-        if state() == State::Ready {
+        if refresh(healthy) == State::Ready {
           return Ok(0);
         }
         std::thread::sleep(Duration::from_millis(250));
@@ -202,7 +209,23 @@ pub fn ensure_started(timeout: Duration) -> Result<u128, String> {
     }
     _ => {}
   }
-  set(advance(&current(), Transition::Spawn));
+  set(advance(current(), Transition::Spawn));
+  spawn()?;
+  let started = Instant::now();
+  while started.elapsed() < timeout {
+    if healthy() {
+      set(advance(current(), Transition::BecameReady));
+      return Ok(started.elapsed().as_millis());
+    }
+    std::thread::sleep(Duration::from_millis(250));
+  }
+  set(advance(current(), Transition::Failed));
+  Err(format!("model did not answer within {}s", timeout.as_secs()))
+}
+
+/// Launches embed_server.py with its output in model.log and its stdin held
+/// by LIFELINE.
+fn spawn_sidecar() -> Result<(), String> {
   let dir = sidecar_dir().ok_or("sidecar/embed_server.py not found")?;
   // Keep the model's own output: when it dies, this file says why.
   let log_dir = crate::data_dir();
@@ -239,16 +262,7 @@ pub fn ensure_started(timeout: Duration) -> Result<u128, String> {
   std::thread::spawn(move || {
     let _ = child.wait();
   });
-  let started = Instant::now();
-  while started.elapsed() < timeout {
-    if request("/health", None, Duration::from_millis(600)).is_ok() {
-      set(advance(&current(), Transition::BecameReady));
-      return Ok(started.elapsed().as_millis());
-    }
-    std::thread::sleep(Duration::from_millis(250));
-  }
-  set(advance(&current(), Transition::Failed));
-  Err(format!("model did not answer within {}s", timeout.as_secs()))
+  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -311,18 +325,18 @@ mod tests {
 
   #[test]
   fn one_start_at_a_time_is_a_state_rule() {
-    assert_eq!(advance(&State::Stopped, Transition::Spawn), State::Starting);
-    assert_eq!(advance(&State::Starting, Transition::Spawn), State::Starting, "no second process");
-    assert_eq!(advance(&State::Ready, Transition::Spawn), State::Ready, "ready never spawns again");
-    assert_eq!(advance(&State::Starting, Transition::BecameReady), State::Ready);
-    assert_eq!(advance(&State::Ready, Transition::BecameUnhealthy), State::Stopped, "an idle exit is noticed");
+    assert_eq!(advance(State::Stopped, Transition::Spawn), State::Starting);
+    assert_eq!(advance(State::Starting, Transition::Spawn), State::Starting, "no second process");
+    assert_eq!(advance(State::Ready, Transition::Spawn), State::Ready, "ready never spawns again");
+    assert_eq!(advance(State::Starting, Transition::BecameReady), State::Ready);
+    assert_eq!(advance(State::Ready, Transition::BecameUnhealthy), State::Stopped, "an idle exit is noticed");
   }
 
   #[test]
   fn a_failed_start_can_be_retried() {
-    let failed = advance(&State::Starting, Transition::Failed);
-    assert!(matches!(failed, State::Failed(_)));
-    assert_eq!(advance(&failed, Transition::Spawn), State::Starting);
-    assert_eq!(advance(&failed, Transition::BecameReady), failed, "only a spawn leaves failed");
+    let failed = advance(State::Starting, Transition::Failed);
+    assert_eq!(failed, State::Failed);
+    assert_eq!(advance(failed, Transition::Spawn), State::Starting);
+    assert_eq!(advance(failed, Transition::BecameReady), failed, "only a spawn leaves failed");
   }
 }
