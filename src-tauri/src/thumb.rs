@@ -1,5 +1,6 @@
-use crate::scan::RawFile;
+use crate::scan::{Kind, RawFile};
 use crate::{color, files, Computed};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 fn thumb_name(rel_path: &str) -> String {
@@ -19,38 +20,22 @@ fn build_thumb(cache_dir: &Path, file: &RawFile, resize: bool) -> Option<PathBuf
   if let Some(parent) = target.parent() {
     std::fs::create_dir_all(parent).ok()?;
   }
-  let out = target.to_string_lossy().to_string();
-  let src = file.abs.to_string_lossy().to_string();
-  let produced = match file.kind.as_str() {
-    "video" => files::run(
+  let (src, out) = (file.abs.as_os_str(), target.as_os_str());
+  let produced = match file.kind {
+    Kind::Video => files::run(
       "ffmpeg",
-      &[
-        "-y".into(),
-        "-v".into(),
-        "error".into(),
-        "-ss".into(),
-        "0".into(),
-        "-i".into(),
-        src,
-        "-frames:v".into(),
-        "1".into(),
-        "-vf".into(),
-        "scale=512:-1".into(),
-        out,
-      ],
+      [OsStr::new("-y"), "-v".as_ref(), "error".as_ref(), "-ss".as_ref(), "0".as_ref(), "-i".as_ref(), src]
+        .into_iter()
+        .chain(["-frames:v", "1", "-vf", "scale=512:-1"].map(OsStr::new))
+        .chain([out]),
     )
     .is_some(),
     // `sips -Z` also scales small files up; a thumbnail should never grow.
-    _ if resize => files::run(
-      "sips",
-      &["-Z".into(), "512".into(), "-s".into(), "format".into(), "png".into(), src, "--out".into(), out],
-    )
-    .is_some(),
-    _ => files::run(
-      "sips",
-      &["-s".into(), "format".into(), "png".into(), src, "--out".into(), out],
-    )
-    .is_some(),
+    _ if resize => {
+      files::run("sips", [OsStr::new("-Z"), "512".as_ref(), "-s".as_ref(), "format".as_ref(), "png".as_ref(), src, "--out".as_ref(), out])
+        .is_some()
+    }
+    _ => files::run("sips", [OsStr::new("-s"), "format".as_ref(), "png".as_ref(), src, "--out".as_ref(), out]).is_some(),
   };
   produced.then_some(target)
 }
@@ -58,19 +43,9 @@ fn build_thumb(cache_dir: &Path, file: &RawFile, resize: bool) -> Option<PathBuf
 fn analysis_sample(cache_dir: &Path, file: &RawFile, thumb: &Path) -> Option<Vec<color::Rgb>> {
   let temp = cache_dir.join("thumbs").join(format!("{}.32.png", thumb_name(&file.rel_path)));
   // The thumbnail is already small, so the original is decoded once, not twice.
-  let source = thumb.to_string_lossy().to_string();
   let produced = files::run(
     "sips",
-    &[
-      "-Z".into(),
-      "32".into(),
-      "-s".into(),
-      "format".into(),
-      "png".into(),
-      source,
-      "--out".into(),
-      temp.to_string_lossy().to_string(),
-    ],
+    [OsStr::new("-Z"), "32".as_ref(), "-s".as_ref(), "format".as_ref(), "png".as_ref(), thumb.as_os_str(), "--out".as_ref(), temp.as_os_str()],
   );
   let sample = produced
     .and_then(|_| std::fs::read(&temp).ok())
@@ -82,9 +57,9 @@ fn analysis_sample(cache_dir: &Path, file: &RawFile, thumb: &Path) -> Option<Vec
 
 /// Everything the viewer and the grid need, derived once and cached.
 pub fn build(cache_dir: &Path, file: &RawFile) -> Computed {
-  let (width, height) = match file.kind.as_str() {
-    "video" => files::ffprobe_size(&file.abs),
-    _ => files::sips_size(&file.abs),
+  let (width, height) = match file.kind {
+    Kind::Video => files::ffprobe_size(&file.abs),
+    Kind::Image => files::sips_size(&file.abs),
   };
   let resize = match (width, height) {
     (Some(w), Some(h)) => w.max(h) > 512,

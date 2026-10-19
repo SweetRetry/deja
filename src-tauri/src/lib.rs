@@ -56,6 +56,8 @@ pub struct Entry {
   pub width: Option<u32>,
   pub height: Option<u32>,
   pub colors: Vec<ColorShare>,
+  /// Compared by duplicates and similar; the frontend never reads it.
+  #[serde(skip_serializing)]
   pub dhash: String,
   pub thumb_path: Option<String>,
   pub indexed: bool,
@@ -95,11 +97,11 @@ pub struct Engine {
   pub root: PathBuf,
   pub cache_dir: PathBuf,
   /// Only the files in scope: browsing, search and indexing all start here.
+  /// Sorted by relative path, as the walk returns them.
   pub files: Vec<scan::RawFile>,
   /// Kept for every walked file, excluded ones too, so bringing a folder back
   /// into scope costs nothing.
   pub computed: BTreeMap<String, Computed>,
-  pub pending: Vec<usize>,
   pub vectors: vectors::Vectors,
   pub scope: scope::Scope,
   pub tree: Vec<scope::FolderCount>,
@@ -110,8 +112,8 @@ pub struct Engine {
 
 /// What the background work is doing right now. The UI mirrors this instead of
 /// inferring it from counters.
-pub fn phase_of(pending: usize, embedded: usize, total: usize) -> &'static str {
-  if pending > 0 {
+pub fn phase_of(remaining: usize, embedded: usize, total: usize) -> &'static str {
+  if remaining > 0 {
     "deriving"
   } else if embedded < total {
     "embedding"
@@ -126,6 +128,22 @@ static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 static DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Absolute paths this process wrote by import; undo deletes only these.
 static IMPORTED: Mutex<std::collections::BTreeSet<PathBuf>> = Mutex::new(std::collections::BTreeSet::new());
+
+/// Runs `work` on the open vault, holding the engine lock for its length.
+fn with_engine<T>(work: impl FnOnce(&mut Engine) -> Result<T, String>) -> Result<T, String> {
+  let mut guard = ENGINE.lock().expect("engine lock");
+  work(guard.as_mut().ok_or("no vault open")?)
+}
+
+fn vault_root() -> Result<PathBuf, String> {
+  with_engine(|engine| Ok(engine.root.clone()))
+}
+
+/// What every command that changed the disk answers with: the vault as it is now.
+fn rescanned(engine: &mut Engine) -> Result<Value, String> {
+  rescan(engine)?;
+  Ok(snapshot(engine, "name"))
+}
 
 /// Always absolute: thumbnail paths are handed to another process (the model
 /// sidecar) whose working directory is not ours.
@@ -201,12 +219,13 @@ fn folders_of(files: &[scan::RawFile], dirs: &[String]) -> Vec<String> {
   set.into_iter().collect()
 }
 
-fn entry_from(file: &scan::RawFile, computed: Option<&Computed>, root: &Path, vectors: &vectors::Vectors) -> Entry {
+fn entry_from(engine: &Engine, file: &scan::RawFile) -> Entry {
+  let computed = engine.computed.get(&file.rel_path);
   Entry {
     rel_path: file.rel_path.clone(),
     name: file.name.clone(),
     ext: file.ext.clone(),
-    kind: file.kind.clone(),
+    kind: file.kind.as_str().to_string(),
     size_bytes: file.size_bytes,
     modified: file.modified,
     width: computed.and_then(|c| c.width),
@@ -215,14 +234,16 @@ fn entry_from(file: &scan::RawFile, computed: Option<&Computed>, root: &Path, ve
     dhash: computed.map(|c| c.dhash.clone()).unwrap_or_default(),
     thumb_path: computed.and_then(|c| c.thumb_path.clone()),
     indexed: computed.is_some(),
-    embedded: vectors.has(&file.rel_path),
-    meta: meta::read(root, &file.rel_path),
+    embedded: engine.vectors.has(&file.rel_path),
+    meta: meta::read(&engine.root, &file.rel_path),
   }
 }
 
 pub fn entry_view(engine: &Engine, rel_path: &str) -> Option<Entry> {
-  let file = engine.files.iter().find(|f| f.rel_path == rel_path)?;
-  Some(entry_from(file, engine.computed.get(&file.rel_path), &engine.root, &engine.vectors))
+  // Search builds every entry through here, so a linear find made it quadratic.
+  let index = engine.files.binary_search_by(|f| f.rel_path.as_str().cmp(rel_path)).ok()?;
+  let file = &engine.files[index];
+  Some(entry_from(engine, file))
 }
 
 /// Files the embedder is done with: they have a vector, or they were derived
@@ -244,27 +265,43 @@ fn settled(engine: &Engine) -> usize {
     .count()
 }
 
+/// Derived from the file as it is now on disk, by the current analysis.
+fn derived(engine: &Engine, file: &scan::RawFile) -> bool {
+  engine.computed.get(&file.rel_path).is_some_and(|c| c.matches(file))
+}
+
+/// The counters both the vault view and each index slice report.
+struct Progress {
+  indexed: usize,
+  embedded: usize,
+  total: usize,
+  remaining: usize,
+}
+
+fn progress(engine: &Engine) -> Progress {
+  Progress {
+    indexed: engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count(),
+    embedded: settled(engine),
+    total: engine.files.len(),
+    remaining: engine.files.iter().filter(|f| !derived(engine, f)).count(),
+  }
+}
+
 /// The vault as the frontend first sees it. `sort` matches what the first
 /// search will answer with, so the wall does not reorder itself once that lands.
 fn snapshot(engine: &Engine, sort: &str) -> Value {
-  let mut entries: Vec<Entry> = engine
-    .files
-    .iter()
-    .map(|f| entry_from(f, engine.computed.get(&f.rel_path), &engine.root, &engine.vectors))
-    .collect();
+  let mut entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
   search::sort_static(&mut entries, sort);
-  let indexed = entries.iter().filter(|e| e.indexed).count();
-  let embedded = settled(engine);
+  let progress = progress(engine);
   json!({
     "root": engine.root.to_string_lossy(),
     "scope": { "chosen": engine.scope.chosen, "excluded": engine.scope.excluded, "tree": engine.tree },
     "folders": folders_of(&engine.files, &engine.dirs),
     "entries": entries,
-    "indexed": indexed,
-    "embedded": embedded,
-    "total": engine.files.len(),
-    "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
-    "model": { "ready": model::healthy() },
+    "indexed": progress.indexed,
+    "embedded": progress.embedded,
+    "total": progress.total,
+    "phase": phase_of(progress.remaining, progress.embedded, progress.total),
   })
 }
 
@@ -299,7 +336,6 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
       "out": std::env::var("DEJA_SELFCHECK_OUT").ok(),
     })),
     "selfcheck_report" => selfcheck_report(args),
-    "model_status" => Ok(json!({ "ready": model::healthy(), "sidecar": model::sidecar_dir().map(|p| p.to_string_lossy().to_string()) })),
     other => Err(format!("unknown command: {other}")),
   }
 }
@@ -354,7 +390,6 @@ fn open_vault(args: &Value) -> Result<Value, String> {
     vectors: vectors::Vectors::open(&cache_dir.join("vectors.db"))?,
     cache_dir,
     files: Vec::new(),
-    pending: Vec::new(),
     scope: scope::read(&expanded),
     tree: Vec::new(),
     dirs: Vec::new(),
@@ -392,7 +427,7 @@ fn watch_folder(root: &Path) {
 }
 
 /// Walks the whole vault: the tree and the caches follow what is on disk, and
-/// only files in scope become the engine's files and pending work.
+/// only files in scope become the engine's files.
 fn rescan(engine: &mut Engine) -> Result<(), String> {
   let (walked, dirs) = scan::walk_all(&engine.root);
   let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
@@ -403,21 +438,11 @@ fn rescan(engine: &mut Engine) -> Result<(), String> {
   // A folder is in scope when what it holds would be.
   engine.dirs = dirs.into_iter().filter(|dir| engine.scope.contains(&format!("{dir}/"))).collect();
   engine.files = walked.into_iter().filter(|f| engine.scope.contains(&f.rel_path)).collect();
-  engine.pending = engine
-    .files
-    .iter()
-    .enumerate()
-    .filter(|(_, f)| !engine.computed.get(&f.rel_path).map(|c| c.matches(f)).unwrap_or(false))
-    .map(|(i, _)| i)
-    .collect();
   Ok(())
 }
 
 fn refresh() -> Result<Value, String> {
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  rescan(engine)?;
-  Ok(snapshot(engine, "name"))
+  with_engine(rescanned)
 }
 
 /// Saves the folders the user left out and answers with the view they leave.
@@ -425,11 +450,10 @@ fn refresh() -> Result<Value, String> {
 fn set_scope(args: &Value) -> Result<Value, String> {
   let excluded: Vec<String> = serde_json::from_value(args.get("excluded").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("excluded is malformed: {e}"))?;
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  engine.scope = scope::write(&engine.root, excluded)?;
-  rescan(engine)?;
-  Ok(snapshot(engine, "name"))
+  with_engine(|engine| {
+    engine.scope = scope::write(&engine.root, excluded)?;
+    rescanned(engine)
+  })
 }
 
 /// Writes dropped items into a vault folder, then rescans so the reply already
@@ -438,7 +462,8 @@ fn import(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
-  import_items(folder, &items)
+  let root = vault_root()?;
+  landed(&root, import::import_into(&root, folder, &items)?)
 }
 
 /// A small png of the clipboard's picture as a data URL, with its pixel size,
@@ -452,10 +477,9 @@ fn clipboard_preview() -> Result<Value, String> {
   let small = dir.join("preview.png");
   std::fs::write(&source, &picture.bytes).map_err(|e| format!("preview failed: {e}"))?;
   let (width, height) = files::sips_size(&source);
-  let args = ["-Z", "320", "-s", "format", "png"].map(String::from).into_iter()
-    .chain([source.to_string_lossy().into(), "--out".into(), small.to_string_lossy().into()])
-    .collect::<Vec<_>>();
-  let scaled = files::run("sips", &args).and_then(|_| std::fs::read(&small).ok());
+  let args = ["-Z", "320", "-s", "format", "png"].map(std::ffi::OsStr::new);
+  let args = args.into_iter().chain([source.as_os_str(), "--out".as_ref(), small.as_os_str()]);
+  let scaled = files::run("sips", args).and_then(|_| std::fs::read(&small).ok());
   let _ = std::fs::remove_file(&source);
   let _ = std::fs::remove_file(&small);
   let bytes = scaled.ok_or("preview failed")?;
@@ -466,25 +490,24 @@ fn clipboard_preview() -> Result<Value, String> {
 /// The picture on the clipboard, imported the way a dropped one is.
 fn import_clipboard(args: &Value) -> Result<Value, String> {
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("");
-  use base64::Engine as _;
   let picture = clipboard::read().ok_or("the clipboard holds no image")?;
-  let url = format!("data:;base64,{}", base64::engine::general_purpose::STANDARD.encode(&picture.bytes));
-  import_items(folder, &[import::Item { url, name: Some("剪贴板图片".into()), source: None }])
+  let item = import::Item { url: String::new(), name: Some("剪贴板图片".into()), source: None };
+  let root = vault_root()?;
+  landed(&root, import::write_into(&root, folder, [Ok((&item, picture.bytes))])?)
 }
 
-fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
-  let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
-  let imported = import::import_into(&root, folder, items)?;
-  IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
-  Ok(json!({ "imported": imported, "view": refresh()? }))
+/// Records what an import wrote, so only that can be undone, and answers
+/// with the vault that now lists it.
+fn landed(root: &Path, landed: import::Landed) -> Result<Value, String> {
+  IMPORTED.lock().expect("imported lock").extend(landed.paths.iter().map(|rel| root.join(rel)));
+  Ok(json!({ "imported": landed.paths, "warning": landed.warning, "view": refresh()? }))
 }
 
 /// Takes back an import. Paths it did not write are refused, so the UI cannot
 /// be used to delete the user's own files.
 fn undo_import(args: &Value) -> Result<Value, String> {
-  let rels: Vec<String> = serde_json::from_value(args.get("relPaths").cloned().unwrap_or(json!([])))
-    .map_err(|e| format!("relPaths are malformed: {e}"))?;
-  let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
+  let rels = rel_paths(args)?;
+  let root = vault_root()?;
   let mut imported = IMPORTED.lock().expect("imported lock");
   if let Some(rel) = rels.iter().find(|rel| !imported.contains(&root.join(rel))) {
     return Err(format!("{rel} was not imported here"));
@@ -499,24 +522,20 @@ fn undo_import(args: &Value) -> Result<Value, String> {
 
 fn entry(args: &Value) -> Result<Value, String> {
   let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  serde_json::to_value(entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?)
-    .map_err(|e| e.to_string())
+  with_engine(|engine| {
+    serde_json::to_value(entry_view(engine, rel).ok_or_else(|| format!("{rel} is not in the vault"))?)
+      .map_err(|e| e.to_string())
+  })
 }
 
 /// Selects the file in Finder. Only paths the vault already lists are accepted,
 /// so the UI cannot be used to open arbitrary locations.
 fn reveal(args: &Value) -> Result<Value, String> {
   let rel = args.get("relPath").and_then(Value::as_str).ok_or("relPath is required")?;
-  let path = {
-    let guard = ENGINE.lock().expect("engine lock");
-    let engine = guard.as_ref().ok_or("no vault open")?;
-    if !engine.files.iter().any(|file| file.rel_path == rel) {
-      return Err(format!("{rel} is not in the vault"));
-    }
-    engine.root.join(rel)
-  };
+  let path = with_engine(|engine| {
+    listed(engine, &[rel.to_string()])?;
+    Ok(engine.root.join(rel))
+  })?;
   std::process::Command::new("open")
     .arg("-R")
     .arg(&path)
@@ -544,12 +563,10 @@ fn listed(engine: &Engine, rels: &[String]) -> Result<(), String> {
 /// way leaves some files moved; the reply says which by looking at the disk.
 fn trash_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
-  let root = {
-    let guard = ENGINE.lock().expect("engine lock");
-    let engine = guard.as_ref().ok_or("no vault open")?;
+  let root = with_engine(|engine| {
     listed(engine, &rels)?;
-    engine.root.clone()
-  };
+    Ok(engine.root.clone())
+  })?;
   let into = std::env::var_os("DEJA_TRASH_DIR").map(PathBuf::from);
   let paths: Vec<PathBuf> = rels.iter().map(|rel| root.join(rel)).collect();
   let error = files::trash(&paths, into.as_deref()).err();
@@ -560,55 +577,59 @@ fn trash_entries(args: &Value) -> Result<Value, String> {
 
 /// Moves files into another vault folder, numbering a name that is taken the
 /// way Finder does. Tags, the thumbnail and the vector go along, so nothing is
-/// derived again. A file already in the folder stays put.
+/// derived again. A file already in the folder stays put. A file that cannot
+/// move does not stop the rest; the reply names the last error, and the view
+/// and the cache follow whatever did move. Only a request where nothing
+/// moved and something failed is an error.
 fn move_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("").to_string();
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  listed(engine, &rels)?;
-  if folder.split('/').any(|part| part == ".." || part.starts_with('.')) {
-    return Err(format!("{folder} is not in the vault"));
-  }
-  let dir = if folder.is_empty() { engine.root.clone() } else { engine.root.join(&folder) };
-  if !dir.is_dir() {
-    return Err(format!("{folder} is not in the vault"));
-  }
-  let mut moved: Vec<(String, String)> = Vec::new();
-  for rel in &rels {
-    let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
-    if parent == folder {
-      continue;
-    }
-    let name = import::unique(&dir, name);
-    let to = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
-    std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
-    let sidecar = meta::meta_path(&engine.root, rel);
-    if sidecar.exists() {
-      let target = meta::meta_path(&engine.root, &to);
-      if let Some(parent) = target.parent() {
-        let _ = std::fs::create_dir_all(parent);
+  with_engine(|engine| {
+    listed(engine, &rels)?;
+    let dir = import::vault_dir(&engine.root, &folder)?;
+    let mut moved: Vec<(String, String)> = Vec::new();
+    let mut error: Option<String> = None;
+    for rel in &rels {
+      let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
+      if parent == folder {
+        continue;
       }
-      let _ = std::fs::rename(&sidecar, &target);
-    }
-    if let Some(mut computed) = engine.computed.remove(rel) {
-      // The thumbnail is named after the path; one left under the old name
-      // would be picked up by the next file to land there.
-      let thumb = thumb::path_for(&engine.cache_dir, &to);
-      if let Some(old) = computed.thumb_path.as_deref() {
-        if std::fs::rename(old, &thumb).is_ok() {
-          computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+      let name = import::unique(&dir, name);
+      let to = import::rel_in(&folder, &name);
+      if let Err(e) = std::fs::rename(engine.root.join(rel), dir.join(&name)) {
+        error = Some(format!("move failed: {e}"));
+        continue;
+      }
+      let sidecar = meta::meta_path(&engine.root, rel);
+      if sidecar.exists() {
+        let target = meta::meta_path(&engine.root, &to);
+        if let Some(parent) = target.parent() {
+          let _ = std::fs::create_dir_all(parent);
         }
+        let _ = std::fs::rename(&sidecar, &target);
       }
-      engine.computed.insert(to.clone(), computed);
+      if let Some(mut computed) = engine.computed.remove(rel) {
+        // The thumbnail is named after the path; one left under the old name
+        // would be picked up by the next file to land there.
+        let thumb = thumb::path_for(&engine.cache_dir, &to);
+        if let Some(old) = computed.thumb_path.as_deref() {
+          if std::fs::rename(old, &thumb).is_ok() {
+            computed.thumb_path = Some(thumb.to_string_lossy().to_string());
+          }
+        }
+        engine.computed.insert(to.clone(), computed);
+      }
+      let _ = engine.vectors.rename(rel, &to);
+      moved.push((rel.clone(), to));
     }
-    let _ = engine.vectors.rename(rel, &to);
-    moved.push((rel.clone(), to));
-  }
-  rescan(engine)?;
-  save_cache(&engine.cache_dir, &engine.computed);
-  let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
-  Ok(json!({ "moved": moved, "view": snapshot(engine, "name") }))
+    let view = rescanned(engine)?;
+    save_cache(&engine.cache_dir, &engine.computed);
+    if let (true, Some(error)) = (moved.is_empty(), &error) {
+      return Err(error.clone());
+    }
+    let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
+    Ok(json!({ "moved": moved, "error": error, "view": view }))
+  })
 }
 
 /// Makes an empty folder inside a vault folder and rescans, so the reply
@@ -621,38 +642,37 @@ fn create_folder(args: &Value) -> Result<Value, String> {
   if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']) {
     return Err(format!("{name} is not a valid folder name"));
   }
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  if !parent.is_empty() && !engine.dirs.contains(&parent) {
-    return Err(format!("{parent} is not in the vault"));
-  }
-  let rel = if parent.is_empty() { name.clone() } else { format!("{parent}/{name}") };
-  let dir = engine.root.join(&rel);
-  if dir.exists() {
-    return Err(format!("{rel} already exists"));
-  }
-  std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
-  rescan(engine)?;
-  Ok(json!({ "folder": rel, "view": snapshot(engine, "name") }))
+  with_engine(|engine| {
+    if !parent.is_empty() && !engine.dirs.contains(&parent) {
+      return Err(format!("{parent} is not in the vault"));
+    }
+    let rel = import::rel_in(&parent, &name);
+    let dir = engine.root.join(&rel);
+    if dir.exists() {
+      return Err(format!("{rel} already exists"));
+    }
+    std::fs::create_dir(&dir).map_err(|e| format!("create folder failed: {e}"))?;
+    Ok(json!({ "folder": rel, "view": rescanned(engine)? }))
+  })
 }
 
 /// Copies across the whole vault. Only files whose size another file shares are
 /// read, since only those can be byte copies.
 fn duplicates() -> Result<Value, String> {
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  let entries: Vec<Entry> = engine.files.iter().filter_map(|f| entry_view(engine, &f.rel_path)).collect();
-  let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
-  for file in &engine.files {
-    *sizes.entry(file.size_bytes).or_default() += 1;
-  }
-  let digests: BTreeMap<String, u64> = engine
-    .files
-    .iter()
-    .filter(|file| sizes[&file.size_bytes] > 1)
-    .filter_map(|file| std::fs::read(&file.abs).ok().map(|bytes| (file.rel_path.clone(), color::fnv64(&bytes))))
-    .collect();
-  Ok(json!({ "groups": dupes::groups(&entries, &digests) }))
+  with_engine(|engine| {
+    let entries: Vec<Entry> = engine.files.iter().map(|f| entry_from(engine, f)).collect();
+    let mut sizes: BTreeMap<u64, usize> = BTreeMap::new();
+    for file in &engine.files {
+      *sizes.entry(file.size_bytes).or_default() += 1;
+    }
+    let digests: BTreeMap<String, u64> = engine
+      .files
+      .iter()
+      .filter(|file| sizes[&file.size_bytes] > 1)
+      .filter_map(|file| std::fs::read(&file.abs).ok().map(|bytes| (file.rel_path.clone(), color::fnv64(&bytes))))
+      .collect();
+    Ok(json!({ "groups": dupes::groups(&entries, &digests) }))
+  })
 }
 
 fn save_meta(args: &Value) -> Result<Value, String> {
@@ -663,12 +683,12 @@ fn save_meta(args: &Value) -> Result<Value, String> {
     .to_string();
   let meta: Meta = serde_json::from_value(args.get("meta").cloned().unwrap_or(json!({})))
     .map_err(|e| format!("meta is malformed: {e}"))?;
-  let guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_ref().ok_or("no vault open")?;
-  meta::write(&engine.root, &rel, &meta)?;
-  let mut view = entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
-  view.meta = meta;
-  serde_json::to_value(view).map_err(|e| e.to_string())
+  with_engine(|engine| {
+    meta::write(&engine.root, &rel, &meta)?;
+    let mut view = entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
+    view.meta = meta;
+    serde_json::to_value(view).map_err(|e| e.to_string())
+  })
 }
 
 /// One slice of background work: derive thumbnails and analysis for `batch`
@@ -677,65 +697,60 @@ fn save_meta(args: &Value) -> Result<Value, String> {
 fn index_slice(args: &Value) -> Result<Value, String> {
   let batch = args.get("batch").and_then(Value::as_u64).unwrap_or(2) as usize;
   let model_ready = settings::get().semantic && model::ready_or_restart();
-  let mut guard = ENGINE.lock().expect("engine lock");
-  let engine = guard.as_mut().ok_or("no vault open")?;
-  let derived = batch.min(engine.pending.len());
-  for _ in 0..derived {
-    let index = engine.pending.remove(0);
-    let file = engine.files[index].clone();
-    let computed = thumb::build(&engine.cache_dir, &file);
-    engine.computed.insert(file.rel_path.clone(), computed);
-  }
+  with_engine(|engine| {
+    let todo: Vec<scan::RawFile> = engine.files.iter().filter(|f| !derived(engine, f)).take(batch).cloned().collect();
+    for file in &todo {
+      let computed = thumb::build(&engine.cache_dir, file);
+      engine.computed.insert(file.rel_path.clone(), computed);
+    }
 
-  let mut embedded_now = 0usize;
-  let mut embed_error: Option<String> = None;
-  // Only files with a thumbnail can be embedded; the rest would be retried forever.
-  let thumbs: BTreeMap<String, String> = engine
-    .files
-    .iter()
-    .filter_map(|file| {
-      let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
-      Some((file.rel_path.clone(), thumb))
-    })
-    .collect();
-  if model_ready {
-    let paths: Vec<String> = thumbs.keys().cloned().collect();
-    let items: Vec<model::Item> = engine
-      .vectors
-      .missing(&paths, batch.max(1))
-      .into_iter()
-      .map(|rel| model::Item { image: Some(thumbs[&rel].clone()), id: rel, text: None })
-      .collect();
-    for chunk in items.chunks(8) {
-      match model::embed(chunk) {
-        Ok(rows) => {
-          for (rel, vector) in rows {
-            if engine.vectors.insert(&rel, &vector).is_ok() {
-              embedded_now += 1;
+    let mut embedded_now = 0usize;
+    let mut embed_error: Option<String> = None;
+    if model_ready {
+      // Only files with a thumbnail can be embedded; the rest would be retried forever.
+      let thumbs: BTreeMap<String, String> = engine
+        .files
+        .iter()
+        .filter_map(|file| {
+          let thumb = engine.computed.get(&file.rel_path)?.thumb_path.clone()?;
+          Some((file.rel_path.clone(), thumb))
+        })
+        .collect();
+      let paths: Vec<String> = thumbs.keys().cloned().collect();
+      let items: Vec<model::Item> = engine
+        .vectors
+        .missing(&paths, batch.max(1))
+        .into_iter()
+        .map(|rel| model::Item { image: Some(thumbs[&rel].clone()), id: rel, text: None })
+        .collect();
+      for chunk in items.chunks(8) {
+        match model::embed(chunk) {
+          Ok(rows) => {
+            for (rel, vector) in rows {
+              if engine.vectors.insert(&rel, &vector).is_ok() {
+                embedded_now += 1;
+              }
             }
           }
+          Err(error) => embed_error = Some(error),
         }
-        Err(error) => embed_error = Some(error),
       }
     }
-  }
 
-  if derived > 0 || embedded_now > 0 {
-    save_cache(&engine.cache_dir, &engine.computed);
-  }
-  let indexed = engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count();
-  let embedded = settled(engine);
-  Ok(json!({
-    "indexed": indexed,
-    "embedded": embedded,
-    "total": engine.files.len(),
-    "remaining": engine.pending.len(),
-    "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
-    "derived": derived,
-    "embeddedNow": embedded_now,
-    "modelReady": model::healthy(),
-    "modelError": embed_error,
-  }))
+    if !todo.is_empty() || embedded_now > 0 {
+      save_cache(&engine.cache_dir, &engine.computed);
+    }
+    let progress = progress(engine);
+    Ok(json!({
+      "indexed": progress.indexed,
+      "embedded": progress.embedded,
+      "total": progress.total,
+      "remaining": progress.remaining,
+      "derived": todo.len(),
+      "embeddedNow": embedded_now,
+      "modelError": embed_error,
+    }))
+  })
 }
 
 pub fn run_tauri() {

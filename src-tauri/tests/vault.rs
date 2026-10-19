@@ -35,7 +35,7 @@ fn temp_vault(name: &str) -> PathBuf {
 #[test]
 fn scans_the_fixture_vault_and_ignores_noise() {
   let vault = temp_vault("scan");
-  let files = scan::walk(&vault);
+  let files = scan::walk_all(&vault).0;
   let paths: Vec<String> = files.iter().map(|file| file.rel_path.clone()).collect();
 
   assert_eq!(files.len(), 12, "twelve images, got {paths:?}");
@@ -51,7 +51,7 @@ fn scans_the_fixture_vault_and_ignores_noise() {
   );
   assert!(!paths.iter().any(|path| path.ends_with("README.md")), "non media is skipped");
   assert!(
-    files.iter().all(|file| file.size_bytes > 0 && file.modified > 0 && file.kind == "image"),
+    files.iter().all(|file| file.size_bytes > 0 && file.modified > 0 && file.kind == scan::Kind::Image),
     "every entry carries size, mtime and kind"
   );
   let _ = std::fs::remove_dir_all(&vault);
@@ -77,8 +77,21 @@ fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
   assert_eq!(first["scope"]["excluded"], json!([]));
   assert_eq!(first["scope"]["tree"][0], json!({ "path": "", "files": 12 }), "the root comes first and counts all");
   assert_eq!(first["total"], json!(12));
+  assert_eq!((first["indexed"].clone(), first["phase"].clone()), (json!(0), json!("deriving")));
+  assert!(first.get("model").is_none(), "the view no longer reports the model");
+  assert!(first["entries"][0].get("dhash").is_none(), "the dhash stays in the backend");
+  let step = dispatch("index_slice", &json!({ "batch": 5 })).expect("index a slice");
+  assert_eq!(
+    (step["derived"].clone(), step["indexed"].clone(), step["remaining"].clone(), step["total"].clone()),
+    (json!(5), json!(5), json!(7), json!(12)),
+    "one slice derives exactly its batch and counts what is left"
+  );
+  assert!(step.get("modelReady").is_none() && step.get("phase").is_none(), "unread progress fields are gone");
   let progress = dispatch("index_slice", &json!({ "batch": 100 })).expect("index");
   assert_eq!((progress["indexed"].clone(), progress["remaining"].clone()), (json!(12), json!(0)));
+  assert_eq!(progress["derived"], json!(7), "the second slice takes only the rest");
+  let idle = dispatch("index_slice", &json!({ "batch": 100 })).expect("idle slice");
+  assert_eq!((idle["derived"].clone(), idle["remaining"].clone()), (json!(0), json!(0)));
 
   let narrowed = dispatch("set_scope", &json!({ "excluded": ["摄影/人像", "摄影/人像/深"] })).expect("set scope");
   assert_eq!(narrowed["scope"]["chosen"], json!(true));
@@ -111,7 +124,7 @@ fn matches_the_shared_contract_file() {
     .map(|row| row["relPath"].as_str().expect("relPath").to_string())
     .collect();
   let vault = temp_vault("contract");
-  let actual: Vec<String> = scan::walk(&vault).iter().map(|file| file.rel_path.clone()).collect();
+  let actual: Vec<String> = scan::walk_all(&vault).0.iter().map(|file| file.rel_path.clone()).collect();
   assert_eq!(actual, expected, "the scanner and the e2e fixture describe the same vault");
   let _ = std::fs::remove_dir_all(&vault);
 }
@@ -145,7 +158,7 @@ fn metadata_round_trips_through_disk() {
 fn thumbnail_lands_on_disk_and_decodes() {
   let vault = temp_vault("thumb");
   let cache = vault.join(".cache");
-  let file = scan::walk(&vault)
+  let file = scan::walk_all(&vault).0
     .into_iter()
     .find(|file| file.rel_path == "摄影/风景/海边-dusk.jpg")
     .expect("fixture present");

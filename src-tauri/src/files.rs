@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -20,7 +21,7 @@ pub fn trash(paths: &[PathBuf], into: Option<&Path>) -> Result<(), String> {
 }
 
 /// Runs a system tool with no shell. Returns stdout on success.
-pub fn run(bin: &str, args: &[String]) -> Option<String> {
+pub fn run(bin: &str, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Option<String> {
   let output = Command::new(bin)
     .args(args)
     .stdin(Stdio::null())
@@ -35,14 +36,8 @@ pub fn run(bin: &str, args: &[String]) -> Option<String> {
 
 /// `sips -g pixelWidth -g pixelHeight` output, e.g. "  pixelWidth: 96".
 pub fn sips_size(path: &Path) -> (Option<u32>, Option<u32>) {
-  let args = vec![
-    "-g".to_string(),
-    "pixelWidth".to_string(),
-    "-g".to_string(),
-    "pixelHeight".to_string(),
-    path.to_string_lossy().to_string(),
-  ];
-  let Some(text) = run("sips", &args) else {
+  let args = ["-g", "pixelWidth", "-g", "pixelHeight"];
+  let Some(text) = run("sips", args.iter().map(OsStr::new).chain([path.as_os_str()])) else {
     return (None, None);
   };
   let read = |key: &str| -> Option<u32> {
@@ -53,6 +48,18 @@ pub fn sips_size(path: &Path) -> (Option<u32>, Option<u32>) {
       .and_then(|value| value.trim().parse().ok())
   };
   (read("pixelWidth"), read("pixelHeight"))
+}
+
+/// `ffprobe` keeps video dimensions in the stream, not in `sips`.
+pub fn ffprobe_size(path: &Path) -> (Option<u32>, Option<u32>) {
+  let args = ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0"];
+  let Some(text) = run("ffprobe", args.iter().map(OsStr::new).chain([path.as_os_str()])) else {
+    return (None, None);
+  };
+  let mut parts = text.trim().split(',');
+  let width = parts.next().and_then(|v| v.trim().parse().ok());
+  let height = parts.next().and_then(|v| v.trim().parse().ok());
+  (width, height)
 }
 
 #[cfg(test)]
@@ -80,26 +87,4 @@ mod tests {
     let error = trash(&[dir.join("gone.jpg")], Some(&dir)).unwrap_err();
     assert!(error.starts_with("trash failed"), "{error}");
   }
-}
-
-/// `ffprobe` keeps video dimensions in the stream, not in `sips`.
-pub fn ffprobe_size(path: &Path) -> (Option<u32>, Option<u32>) {
-  let args = vec![
-    "-v".to_string(),
-    "error".to_string(),
-    "-select_streams".to_string(),
-    "v:0".to_string(),
-    "-show_entries".to_string(),
-    "stream=width,height".to_string(),
-    "-of".to_string(),
-    "csv=p=0".to_string(),
-    path.to_string_lossy().to_string(),
-  ];
-  let Some(text) = run("ffprobe", &args) else {
-    return (None, None);
-  };
-  let mut parts = text.trim().split(',');
-  let width = parts.next().and_then(|v| v.trim().parse().ok());
-  let height = parts.next().and_then(|v| v.trim().parse().ok());
-  (width, height)
 }

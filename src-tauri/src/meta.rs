@@ -66,13 +66,7 @@ pub fn parse(text: &str) -> Meta {
     }
     if let Some((key, value)) = line.split_once(':') {
       match key.trim() {
-        "tags" => {
-          if value.trim().is_empty() {
-            meta.tags = Vec::new();
-          } else {
-            meta.tags = parse_tags(value);
-          }
-        }
+        "tags" => meta.tags = parse_tags(value),
         "rating" => meta.rating = value.trim().parse().unwrap_or(0).min(5),
         "source" => {
           let value = unquote(value);
@@ -163,6 +157,13 @@ mod tests {
     let meta = parse("随手记一句。\n");
     assert!(meta.tags.is_empty());
     assert_eq!(meta.note, "随手记一句。");
+  }
+
+  #[test]
+  fn a_blank_tags_line_means_no_tags() {
+    for text in ["---\ntags:\n---\n", "---\ntags:   \n---\n", "---\ntags: []\n---\n"] {
+      assert_eq!(parse(text).tags, Vec::<String>::new(), "{text:?}");
+    }
   }
 
   #[test]
