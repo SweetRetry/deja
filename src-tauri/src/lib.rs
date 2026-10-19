@@ -485,11 +485,17 @@ fn moved_outside(computed: &BTreeMap<String, Computed>, walked: &[scan::RawFile]
 /// only files in scope become the engine's files.
 fn rescan(engine: &mut Engine) -> Result<(), String> {
   let (walked, dirs) = scan::walk_all(&engine.root);
+  let mut followed = false;
   for (from, to) in moved_outside(&engine.computed, &walked) {
     // Notes already at the new path are the newer ones; the file starts over.
     if !meta::meta_path(&engine.root, &to).exists() {
       carry(engine, &from, &to);
+      followed = true;
     }
+  }
+  if followed {
+    // A relaunch reads the cache; without this the file would be derived again.
+    save_cache(&engine.cache_dir, &engine.computed);
   }
   let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
   let keep_set: std::collections::BTreeSet<&String> = keep.iter().collect();
