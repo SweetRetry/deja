@@ -62,7 +62,7 @@ export const api = {
   similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
   entry: (relPath: string) => call<Entry>("entry", { relPath }),
   reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),
-  /** Stops at the first file that fails; `trashed` lists the ones that went. */
+  /** One request for every file; `trashed` lists the ones that left the vault. */
   trash: (relPaths: string[]) =>
     call<{ trashed: string[]; error: string | null; view: VaultView }>("trash_entries", { relPaths }),
   move: (relPaths: string[], folder: string) => call<{ moved: Moved[]; view: VaultView }>("move_entries", { relPaths, folder }),

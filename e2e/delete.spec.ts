@@ -40,6 +40,8 @@ test("右键删除把素材移到废纸篓，墙上不再有它", async ({ page 
 
   await expect(page.getByTestId("thumb")).toHaveCount(11);
   await expect(page.locator(`[data-rel-path="${DELETED}"]`)).toHaveCount(0);
+  // The tile leaves before Finder answers; the toast is the answer.
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("移到废纸篓");
   // The file is where the user can still get it back.
   expect(existsSync(join(vault, DELETED))).toBe(false);
   expect(readdirSync(SCRATCH_TRASH)).toContain(NAME);

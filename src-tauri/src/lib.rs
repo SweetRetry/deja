@@ -493,9 +493,9 @@ fn listed(engine: &Engine, rels: &[String]) -> Result<(), String> {
   }
 }
 
-/// Moves files the vault lists to the system Trash and rescans, so the reply
-/// already leaves them out. A file that fails stops the batch; those before it
-/// are already in the Trash and the reply says which.
+/// Moves files the vault lists to the system Trash in one request and
+/// rescans, so the reply already leaves them out. A request that fails part
+/// way leaves some files moved; the reply says which by looking at the disk.
 fn trash_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
   let root = {
@@ -505,17 +505,9 @@ fn trash_entries(args: &Value) -> Result<Value, String> {
     engine.root.clone()
   };
   let into = std::env::var_os("DEJA_TRASH_DIR").map(PathBuf::from);
-  let mut trashed = Vec::new();
-  let mut error = None;
-  for rel in &rels {
-    match files::trash(&root.join(rel), into.as_deref()) {
-      Ok(()) => trashed.push(rel.clone()),
-      Err(e) => {
-        error = Some(e);
-        break;
-      }
-    }
-  }
+  let paths: Vec<PathBuf> = rels.iter().map(|rel| root.join(rel)).collect();
+  let error = files::trash(&paths, into.as_deref()).err();
+  let trashed: Vec<&String> = rels.iter().filter(|rel| !root.join(rel).exists()).collect();
   // The sidecar stays behind, so putting the file back restores its tags.
   Ok(json!({ "trashed": trashed, "error": error, "view": refresh()? }))
 }

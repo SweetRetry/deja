@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
+import { ellipsize } from "@/lib/utils";
 import type { Filter, Ranking, Sort } from "@/lib/types";
 import { shownPaths } from "./browse";
 import { clearNarrowing } from "./filter";
@@ -58,25 +59,29 @@ export const pickAll = () => pick(shownPaths(session().browse) ?? []);
 /** Back to the focused file alone. */
 export const clearPicked = () => pick([]);
 
-const nameOf = (relPath: string) => session().vault.library?.byPath[relPath]?.name ?? relPath.split("/").pop();
+const nameOf = (relPath: string) => ellipsize(session().vault.library?.byPath[relPath]?.name ?? relPath.split("/").pop() ?? "");
 const folderName = (folder: string) => folder.split("/").pop() || session().vault.library?.root.split("/").pop() || "根目录";
 
 /** Moves files to the system Trash. The Trash is the undo, so there is no
- *  confirmation: the tiles leave the wall and the toast says where they went. */
+ *  confirmation: the tiles leave the wall and the toast says where they went.
+ *  They leave before Finder answers, which takes a moment; the rescan after it
+ *  brings back any file that did not go. */
 export async function trashEntries(relPaths: string[]) {
   if (relPaths.length === 0) return;
+  dispatch({ type: "ENTRIES_REMOVED", relPaths });
   try {
     const { trashed, error, view } = await api.trash(relPaths);
-    dispatch({ type: "ENTRIES_REMOVED", relPaths: trashed });
     dispatch({ type: "RESCANNED", view });
     const what = trashed.length === 1 ? `「${nameOf(trashed[0] ?? "")}」` : ` ${trashed.length} 项素材`;
     if (error) {
       toast.error(`有 ${relPaths.length - trashed.length} 项没能移到废纸篓`, { description: humanError(error) });
     } else {
-      toast.success(`已将${what}移到废纸篓`, { description: "需要时可在访达的废纸篓里找回。" });
+      toast.success(`已将${what}移到废纸篓`);
     }
   } catch (problem) {
     toast.error(humanError(problem));
+    const view = await api.refresh().catch(() => null);
+    if (view) dispatch({ type: "RESCANNED", view });
   }
 }
 

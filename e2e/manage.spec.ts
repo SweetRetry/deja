@@ -42,10 +42,20 @@ test("⌘ 点按选中两项，右键一次移到废纸篓", async ({ page }) =>
   await expect(panel(page)).toHaveAttribute("data-picked-count", "2");
   await expect(page.locator('[data-picked="true"]')).toHaveCount(2);
 
+  // Finder takes a moment to answer; the tiles must not wait for it, and both
+  // files go in one request.
+  const requests: string[] = [];
+  await page.route("**/api/trash_entries", async (route) => {
+    requests.push(route.request().postData() ?? "");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
   await tile(page, ORIGINAL).click({ button: "right" });
   await page.getByRole("menuitem", { name: "将 2 项移到废纸篓" }).click();
 
-  await expect(page.getByTestId("thumb")).toHaveCount(10);
+  await expect(page.getByTestId("thumb")).toHaveCount(10, { timeout: 500 });
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("2 项素材");
+  expect(requests).toHaveLength(1);
   expect(readdirSync(SCRATCH_TRASH).sort()).toEqual(["逆光-03.jpg", "黄昏逆光-01.jpg"].sort());
   await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("2 项素材");
   await expect(panel(page)).not.toHaveAttribute("data-picked-count");
@@ -93,6 +103,8 @@ test("重复素材按组列出，选中多余副本后移到废纸篓", async ({
   await page.getByRole("menuitem", { name: "移到废纸篓", exact: true }).click();
 
   await expect(page.getByTestId("duplicate-summary")).toHaveText("没有重复");
+  // The tile leaves before Finder answers; the toast is the answer.
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("移到废纸篓");
   expect(readdirSync(SCRATCH_TRASH)).toEqual(["黄昏逆光-02.jpg"]);
   await page.getByRole("button", { name: "返回全部素材" }).click();
   await expect(page.getByTestId("thumb")).toHaveCount(11);

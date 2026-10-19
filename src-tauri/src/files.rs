@@ -1,18 +1,22 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Moves one file into the system Trash, where the user still finds it. A
-/// scratch folder stands in when the environment names one, so no test run
-/// reaches the user's own Trash.
-pub fn trash(path: &Path, into: Option<&Path>) -> Result<(), String> {
+/// Moves files into the system Trash, where the user still finds them. All of
+/// them go in one Finder request: one per file took a second each and chimed
+/// once per file. A scratch folder stands in when the environment names one,
+/// so no test run reaches the user's own Trash.
+pub fn trash(paths: &[PathBuf], into: Option<&Path>) -> Result<(), String> {
   let Some(dir) = into else {
-    return ::trash::delete(path).map_err(|e| format!("trash failed: {e}"));
+    return ::trash::delete_all(paths).map_err(|e| format!("trash failed: {e}"));
   };
   std::fs::create_dir_all(dir).map_err(|e| format!("trash failed: {e}"))?;
-  let name = path.file_name().ok_or("trash failed: no file name")?.to_string_lossy();
-  // Copies share names, and a batch sends them in together.
-  let name = crate::import::unique(dir, &name);
-  std::fs::rename(path, dir.join(name)).map_err(|e| format!("trash failed: {e}"))
+  for path in paths {
+    let name = path.file_name().ok_or("trash failed: no file name")?.to_string_lossy();
+    // Copies share names, and a batch sends them in together.
+    let name = crate::import::unique(dir, &name);
+    std::fs::rename(path, dir.join(name)).map_err(|e| format!("trash failed: {e}"))?;
+  }
+  Ok(())
 }
 
 /// Runs a system tool with no shell. Returns stdout on success.
@@ -63,7 +67,7 @@ mod tests {
     let file = dir.join("vault/图.jpg");
     std::fs::write(&file, b"jpeg").unwrap();
 
-    trash(&file, Some(&dir.join("trash"))).unwrap();
+    trash(&[file.clone()], Some(&dir.join("trash"))).unwrap();
 
     assert!(!file.exists(), "the file leaves the vault");
     assert_eq!(std::fs::read(dir.join("trash/图.jpg")).unwrap(), b"jpeg");
@@ -73,7 +77,7 @@ mod tests {
   #[test]
   fn trash_reports_a_file_it_cannot_move() {
     let dir = std::env::temp_dir().join(format!("deja-trash-missing-{}", std::process::id()));
-    let error = trash(&dir.join("gone.jpg"), Some(&dir)).unwrap_err();
+    let error = trash(&[dir.join("gone.jpg")], Some(&dir)).unwrap_err();
     assert!(error.starts_with("trash failed"), "{error}");
   }
 }
