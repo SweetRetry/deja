@@ -1,16 +1,13 @@
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
-import { CaretRightIcon, CheckIcon } from "@phosphor-icons/react"
+import { CaretRightIcon } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
 
 /** shadcn/ui's context-menu on Base UI, with Retry's surface: `bg-popover`,
  *  a border, no shadow, and 32px rows. Take the names and props from the
- *  shadcn docs; only these classes are this project's. */
+ *  shadcn docs; only these classes are this project's. Parts the app does not
+ *  use are left out: add one back from shadcn when a screen needs it. */
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
-}
-
-function ContextMenuPortal({ ...props }: ContextMenuPrimitive.Portal.Props) {
-  return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
 }
 
 function ContextMenuTrigger({ className, ...props }: ContextMenuPrimitive.Trigger.Props) {
@@ -54,28 +51,6 @@ function ContextMenuContent({
   )
 }
 
-function ContextMenuGroup({ ...props }: ContextMenuPrimitive.Group.Props) {
-  return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
-}
-
-function ContextMenuLabel({
-  className,
-  inset,
-  ...props
-}: ContextMenuPrimitive.GroupLabel.Props & { inset?: boolean }) {
-  return (
-    <ContextMenuPrimitive.GroupLabel
-      data-slot="context-menu-label"
-      data-inset={inset || undefined}
-      className={cn(
-        "px-2 py-1 text-xs font-medium text-muted-foreground data-[inset=true]:pl-7",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
 function ContextMenuItem({
   className,
   inset,
@@ -93,70 +68,6 @@ function ContextMenuItem({
       )}
       {...props}
     />
-  )
-}
-
-function ContextMenuCheckboxItem({
-  className,
-  children,
-  checked,
-  inset,
-  ...props
-}: ContextMenuPrimitive.CheckboxItem.Props & { inset?: boolean }) {
-  return (
-    <ContextMenuPrimitive.CheckboxItem
-      data-slot="context-menu-checkbox-item"
-      data-inset={inset || undefined}
-      className={cn(
-        "relative flex h-8 cursor-default items-center gap-2 rounded-sm pr-8 pl-2 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:text-subtle-foreground data-[inset=true]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        className
-      )}
-      checked={checked}
-      {...props}
-    >
-      {children}
-      <span
-        data-slot="context-menu-checkbox-item-indicator"
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-      >
-        <ContextMenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon />
-        </ContextMenuPrimitive.CheckboxItemIndicator>
-      </span>
-    </ContextMenuPrimitive.CheckboxItem>
-  )
-}
-
-function ContextMenuRadioGroup({ ...props }: ContextMenuPrimitive.RadioGroup.Props) {
-  return <ContextMenuPrimitive.RadioGroup data-slot="context-menu-radio-group" {...props} />
-}
-
-function ContextMenuRadioItem({
-  className,
-  children,
-  inset,
-  ...props
-}: ContextMenuPrimitive.RadioItem.Props & { inset?: boolean }) {
-  return (
-    <ContextMenuPrimitive.RadioItem
-      data-slot="context-menu-radio-item"
-      data-inset={inset || undefined}
-      className={cn(
-        "relative flex h-8 cursor-default items-center gap-2 rounded-sm pr-8 pl-2 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:text-subtle-foreground data-[inset=true]:pl-7 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <span
-        data-slot="context-menu-radio-item-indicator"
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-      >
-        <ContextMenuPrimitive.RadioItemIndicator>
-          <CheckIcon />
-        </ContextMenuPrimitive.RadioItemIndicator>
-      </span>
-    </ContextMenuPrimitive.RadioItem>
   )
 }
 
@@ -214,14 +125,8 @@ function ContextMenuSubContent({
 
 export {
   ContextMenu,
-  ContextMenuCheckboxItem,
   ContextMenuContent,
-  ContextMenuGroup,
   ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuPortal,
-  ContextMenuRadioGroup,
-  ContextMenuRadioItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuSub,
