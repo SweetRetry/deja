@@ -57,11 +57,8 @@ fn build_thumb(cache_dir: &Path, file: &RawFile, resize: bool) -> Option<PathBuf
 
 fn analysis_sample(cache_dir: &Path, file: &RawFile, thumb: &Path) -> Option<Vec<color::Rgb>> {
   let temp = cache_dir.join("thumbs").join(format!("{}.32.png", thumb_name(&file.rel_path)));
-  let source = if file.kind == "video" {
-    thumb.to_string_lossy().to_string()
-  } else {
-    file.abs.to_string_lossy().to_string()
-  };
+  // The thumbnail is already small, so the original is decoded once, not twice.
+  let source = thumb.to_string_lossy().to_string();
   let produced = files::run(
     "sips",
     &[
