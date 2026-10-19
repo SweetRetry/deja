@@ -1,33 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { openFolder, scratchVault } from "./helpers";
 
 // A scratch copy without .deja/scope.json is a folder opened for the first
 // time: nothing is indexed until the user picks which folders to index.
-let vault = "";
-
-test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "deja-scope-"));
-  cpSync("public/vault", vault, { recursive: true });
-  rmSync(join(vault, ".deja/scope.json"));
-});
-
-test.afterEach(() => {
-  rmSync(vault, { recursive: true, force: true });
-});
+const vault = scratchVault("scope", (path) => rmSync(join(path, ".deja/scope.json")));
 
 async function openFresh(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(vault);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page, vault.path);
   const picker = page.getByTestId("scope");
   await expect(picker).toBeVisible();
   return picker;
 }
 
-const scopeOnDisk = () => JSON.parse(readFileSync(join(vault, ".deja/scope.json"), "utf8")) as { excluded: string[] };
+const scopeOnDisk = () => JSON.parse(readFileSync(join(vault.path, ".deja/scope.json"), "utf8")) as { excluded: string[] };
 
 test("首次打开先选索引范围：去掉「人像」后只索引其余 9 张，之后可从文件夹菜单改回", async ({ page }) => {
   const picker = await openFresh(page);

@@ -1,27 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { openFolder, scratchVault, toast } from "./helpers";
 
 // A browser drag arrives as a DataTransfer: file bytes when the page can read
 // them, otherwise the image's markup and link. Both shapes are synthesized here
 // and land in a scratch copy of the fixture vault, so the shared one stays clean.
-let vault = "";
-
-test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "deja-drop-"));
-  cpSync("public/vault", vault, { recursive: true });
-});
-
-test.afterEach(() => {
-  rmSync(vault, { recursive: true, force: true });
-});
+const vault = scratchVault("drop");
 
 async function openScratch(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(vault);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page, vault.path);
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 }
 
@@ -46,7 +34,6 @@ async function dropFile(page: Page, base64: string, name: string, hold = false) 
 }
 
 const inspector = (page: Page) => page.getByRole("complementary", { name: "检视面板" });
-const toast = (page: Page, type: string) => page.locator(`[data-sonner-toast][data-type="${type}"]`);
 
 test("悬停显示导入提示，松开后文件进入当前文件夹并被选中", async ({ page }) => {
   await openScratch(page);
@@ -63,8 +50,8 @@ test("悬停显示导入提示，松开后文件进入当前文件夹并被选�
   await expect(page.getByTestId("drop-overlay")).toHaveAttribute("data-state", "closed");
   await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
   await expect(inspector(page)).toHaveAttribute("data-entry", "海报/拖进来的.jpg");
-  expect(existsSync(join(vault, "海报/拖进来的.jpg"))).toBe(true);
-  expect(readFileSync(join(vault, ".deja/meta/海报/拖进来的.jpg.md"), "utf8")).toContain(
+  expect(existsSync(join(vault.path, "海报/拖进来的.jpg"))).toBe(true);
+  expect(readFileSync(join(vault.path, ".deja/meta/海报/拖进来的.jpg.md"), "utf8")).toContain(
     "source: https://example.com/pic.jpg",
   );
 });
@@ -104,7 +91,7 @@ test("只带图片链接的拖放由后端下载，同名时编号", async ({ pa
   }, src);
   await expect(toast(page, "success")).toContainText("已导入 1 项");
   await expect(inspector(page)).toHaveAttribute("data-entry", "乱码名-A7f3 2.jpg");
-  expect(readFileSync(join(vault, ".deja/meta/乱码名-A7f3 2.jpg.md"), "utf8")).toContain(`source: ${src}`);
+  expect(readFileSync(join(vault.path, ".deja/meta/乱码名-A7f3 2.jpg.md"), "utf8")).toContain(`source: ${src}`);
 });
 
 test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的文件", async ({ page }) => {
@@ -121,8 +108,8 @@ test("定位清掉挡住它的搜索并滚到那张图，撤回删掉导入的�
 
   await page.getByRole("button", { name: "撤回" }).click();
   await expect(toast(page, "success").filter({ hasText: "已撤回导入" })).toBeVisible();
-  expect(existsSync(join(vault, "海报/zz-最后一张.jpg"))).toBe(false);
-  expect(existsSync(join(vault, ".deja/meta/海报/zz-最后一张.jpg.md"))).toBe(false);
+  expect(existsSync(join(vault.path, "海报/zz-最后一张.jpg"))).toBe(false);
+  expect(existsSync(join(vault.path, ".deja/meta/海报/zz-最后一张.jpg.md"))).toBe(false);
   await expect(page.locator('[data-rel-path="海报/zz-最后一张.jpg"]')).toHaveCount(0);
 });
 
@@ -156,7 +143,7 @@ test("粘贴剪贴板里的图片，进入当前文件夹并被选中", async ({
 
   await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
   await expect(inspector(page)).toHaveAttribute("data-entry", "海报/image.jpg");
-  expect(existsSync(join(vault, "海报/image.jpg"))).toBe(true);
+  expect(existsSync(join(vault.path, "海报/image.jpg"))).toBe(true);
 });
 
 test("粘贴不含图片的文字，或粘进输入框，都不导入", async ({ page }) => {
@@ -182,7 +169,7 @@ test("粘贴不含图片的文字，或粘进输入框，都不导入", async ({
   const [plain, , field] = defaultPrevented;
   expect([plain, field]).toEqual([false, false]);
   await page.waitForTimeout(300);
-  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0);
   await expect(page.getByTestId("thumb")).toHaveCount(before);
 });
 
@@ -221,7 +208,7 @@ test.describe("剪贴板里的图片", () => {
 
     await expect(toast(page, "success")).toContainText("已导入 1 项到「海报」");
     await expect(inspector(page)).toHaveAttribute("data-entry", "海报/剪贴板图片.jpg");
-    expect(existsSync(join(vault, "海报/剪贴板图片.jpg"))).toBe(true);
+    expect(existsSync(join(vault.path, "海报/剪贴板图片.jpg"))).toBe(true);
     await expect(offer(page)).toHaveCount(0);
   });
 });

@@ -1,15 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { FIXTURE_VAULT, openFolder } from "./helpers";
 
-const VAULT = "public/vault";
-const META_DIR = join(VAULT, ".deja/meta");
+const META_DIR = join(FIXTURE_VAULT, ".deja/meta");
 
 async function openVault(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(VAULT);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page);
   await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute("data-state", "expanded");
   await expect(page.getByTestId("thumb").first()).toBeVisible();
 }
@@ -41,7 +38,7 @@ function metaFile(relPath: string) {
 test.afterEach(() => {
   for (const relPath of ["摄影/人像/黄昏逆光-01.jpg", "海报/深色海报.jpg"]) {
     const path = metaFile(relPath);
-    if (existsSync(path) && !relPath.includes("深色登录")) {
+    if (existsSync(path)) {
       const text = readFileSync(path, "utf8");
       // Only remove files this suite created; the seeded fixtures stay.
       if (!text.includes("source:")) rmSync(path, { force: true });
@@ -115,8 +112,8 @@ test("以图找图把近似重复排在第一位", async ({ page }) => {
 test("在 Finder 里新增文件后几秒内出现在素材墙", async ({ page }) => {
   await openVault(page);
   const name = "验收-新增.jpg";
-  const target = join(VAULT, name);
-  writeFileSync(target, readFileSync(join(VAULT, "海报/和风-02.jpg")));
+  const target = join(FIXTURE_VAULT, name);
+  writeFileSync(target, readFileSync(join(FIXTURE_VAULT, "海报/和风-02.jpg")));
   try {
     await expect(page.locator(`[data-rel-path="${name}"]`)).toBeVisible({ timeout: 15_000 });
   } finally {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { openFolder, scratchVault, toast } from "./helpers";
 import { SCRATCH_TRASH } from "./scratch-trash";
 
 // Deleting happens on a scratch copy of the fixture vault, and the backend is
@@ -10,23 +10,10 @@ import { SCRATCH_TRASH } from "./scratch-trash";
 const DELETED = "摄影/人像/黄昏逆光-01.jpg";
 const NAME = "黄昏逆光-01.jpg";
 
-let vault = "";
-
-test.beforeEach(() => {
-  vault = mkdtempSync(join(tmpdir(), "deja-delete-"));
-  cpSync("public/vault", vault, { recursive: true });
-  rmSync(SCRATCH_TRASH, { recursive: true, force: true });
-});
-
-test.afterEach(() => {
-  rmSync(vault, { recursive: true, force: true });
-});
+const vault = scratchVault("delete", () => rmSync(SCRATCH_TRASH, { recursive: true, force: true }));
 
 async function openVault(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "打开文件夹", exact: true }).click();
-  await page.getByLabel("文件夹路径").fill(vault);
-  await page.getByLabel("文件夹路径").press("Enter");
+  await openFolder(page, vault.path);
   await expect(page.getByTestId("thumb")).toHaveCount(12);
 }
 
@@ -41,13 +28,13 @@ test("右键删除把素材移到废纸篓，墙上不再有它", async ({ page 
   await expect(page.getByTestId("thumb")).toHaveCount(11);
   await expect(page.locator(`[data-rel-path="${DELETED}"]`)).toHaveCount(0);
   // The tile leaves before Finder answers; the toast is the answer.
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("移到废纸篓");
+  await expect(toast(page, "success")).toContainText("移到废纸篓");
   // The file is where the user can still get it back.
-  expect(existsSync(join(vault, DELETED))).toBe(false);
+  expect(existsSync(join(vault.path, DELETED))).toBe(false);
   expect(readdirSync(SCRATCH_TRASH)).toContain(NAME);
   // The inspector moves on instead of going blank.
   await expect(inspector(page)).not.toHaveAttribute("data-entry", DELETED);
-  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("移到废纸篓");
+  await expect(toast(page, "success")).toContainText("移到废纸篓");
 });
 
 test("斜杠以外的路径不被接受", async ({ page }) => {

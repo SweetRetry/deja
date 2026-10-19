@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { SCRATCH_TRASH } from "./e2e/scratch-trash";
 
 const PORT = 5273;
+/** `npm run e2e:slow` sets this for a loaded machine or a slow CI box. */
+const SLOW = process.env.DEJA_E2E_SLOW === "1";
 
 export default defineConfig({
   testDir: "e2e",
@@ -9,7 +11,8 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["list"]],
-  timeout: 30_000,
+  timeout: SLOW ? 90_000 : 30_000,
+  expect: { timeout: SLOW ? 20_000 : 5_000 },
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: "retain-on-failure",
