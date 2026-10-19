@@ -10,6 +10,11 @@ import { clearNarrowing } from "./filter";
 export const setQuery = (query: string) => dispatch({ type: "QUERY", query });
 export const setFilter = (filter: Filter) => dispatch({ type: "FILTER", filter });
 export const patchFilter = (part: Partial<Filter>) => setFilter({ ...session().browse.filter, ...part });
+/** Narrows or scopes the wall. A lens ignores the filters, so it goes first and the filter shows. */
+export function filterWall(part: Partial<Filter>) {
+  clearLens();
+  patchFilter(part);
+}
 export const clearFilters = () => setFilter(clearNarrowing(session().browse.filter));
 export const setSort = (sort: Sort) => dispatch({ type: "SORT", sort });
 export const setRanking = (ranking: Ranking) => dispatch({ type: "RANKING", ranking });
@@ -109,8 +114,7 @@ export async function createFolder(parent: string, name: string): Promise<boolea
   try {
     const { folder, view } = await api.createFolder(parent, name);
     dispatch({ type: "RESCANNED", view });
-    clearLens();
-    patchFilter({ folder });
+    filterWall({ folder });
     return true;
   } catch (problem) {
     toast.error(humanError(problem));
