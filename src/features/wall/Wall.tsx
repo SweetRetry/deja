@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useSession, type Session } from "@/app/store";
 import { useRoot, useWallEntries, useWallLoading } from "@/app/selectors";
 import { clearPicked, openViewer, pickAll, select } from "@/features/browse/commands";
-import { belowMatch, THUMB_WIDTH, usePreferences } from "@/features/settings/preferences";
+import { isBelowMatch, THUMB_WIDTH, usePreferences } from "@/features/settings/preferences";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DuplicateGroup, Entry, SearchScore } from "@/lib/types";
 import { useHotkey } from "@/lib/use-hotkey";
@@ -159,7 +159,7 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
                   picked={picked.has(tile.entry.relPath)}
                   score={scores[tile.entry.relPath]}
                   note={notes.get(tile.entry.relPath)}
-                  dim={belowMatch(scores[tile.entry.relPath]?.match, dimUnder)}
+                  dim={isBelowMatch(scores[tile.entry.relPath]?.match, dimUnder)}
                   showNames={showNames}
                   root={root}
                 />

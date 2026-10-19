@@ -31,11 +31,6 @@ function asDataUrl(file: File): Promise<string> {
   });
 }
 
-/** True when a keystroke or paste lands in a field that handles text itself. */
-export function isEditable(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
-}
-
 /**
  * Reads what a drop or a paste carried. File bytes win when the browser handed them over;
  * otherwise the image's own URL, which the backend downloads. A linked image's

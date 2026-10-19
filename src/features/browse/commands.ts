@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
-import { ellipsize } from "@/lib/utils";
+import { baseName, ellipsize } from "@/lib/utils";
 import type { Filter, Ranking, Sort } from "@/lib/types";
 import { shownPaths } from "./browse";
 import { clearNarrowing } from "./filter";
@@ -59,8 +59,8 @@ export const pickAll = () => pick(shownPaths(session().browse) ?? []);
 /** Back to the focused file alone. */
 export const clearPicked = () => pick([]);
 
-const nameOf = (relPath: string) => ellipsize(session().vault.library?.byPath[relPath]?.name ?? relPath.split("/").pop() ?? "");
-const folderName = (folder: string) => folder.split("/").pop() || session().vault.library?.root.split("/").pop() || "根目录";
+const nameOf = (relPath: string) => ellipsize(session().vault.library?.byPath[relPath]?.name ?? baseName(relPath));
+const folderName = (folder: string) => baseName(folder, baseName(session().vault.library?.root ?? "", "根目录"));
 
 /** Moves files to the system Trash. The Trash is the undo, so there is no
  *  confirmation: the tiles leave the wall and the toast says where they went.

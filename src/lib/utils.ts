@@ -1,5 +1,8 @@
 export { cn } from "cn";
 
+/** The last segment of a "/" path; `fallback` when the path is empty or ends in "/". */
+export const baseName = (path: string, fallback = "") => path.split("/").pop() || fallback;
+
 /** A file name cut in the middle to at most `max` characters, keeping the
  *  extension, so a hash-like name stays on one line without a tooltip. */
 export function ellipsize(name: string, max = 24): string {

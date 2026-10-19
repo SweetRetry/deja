@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ellipsize } from "./utils.ts";
+import { baseName, ellipsize } from "./utils.ts";
 
 test("short names are left alone", () => {
   assert.equal(ellipsize("海报.jpg"), "海报.jpg");
@@ -13,4 +13,12 @@ test("a long name is cut in the middle and keeps its extension", () => {
 
 test("a long name without an extension is cut in the middle", () => {
   assert.equal(ellipsize("abcdefghijklmnopqrstuvwxyz0123456789", 10), "abcde…6789");
+});
+
+test("baseName is the last path segment, or the fallback when there is none", () => {
+  assert.equal(baseName("a/b/海报.jpg"), "海报.jpg");
+  assert.equal(baseName("海报.jpg"), "海报.jpg");
+  assert.equal(baseName("", "根目录"), "根目录");
+  assert.equal(baseName("a/b/", "根目录"), "根目录");
+  assert.equal(baseName(""), "");
 });

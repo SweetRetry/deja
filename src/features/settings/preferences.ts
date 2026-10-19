@@ -93,5 +93,5 @@ export function startTheme(): () => void {
 
 /** A result the model scored under the lowest match the user accepts. Results
  *  without a model score (keyword ranking, the similar view) are never below. */
-export const belowMatch = (match: number | null | undefined, minMatch: number) =>
+export const isBelowMatch = (match: number | null | undefined, minMatch: number) =>
   match != null && match < minMatch;

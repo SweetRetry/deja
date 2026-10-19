@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
-/** A text field, textarea, select or contenteditable has the keyboard. */
+/** True when a keystroke or paste lands in a field that handles text itself: a
+ *  text field, textarea, select or contenteditable. */
 export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);

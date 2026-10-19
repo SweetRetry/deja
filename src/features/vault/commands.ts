@@ -1,13 +1,11 @@
 import { toast } from "sonner";
 import { dispatch, session } from "@/app/store";
 import { api } from "@/lib/bridge";
-import { humanError } from "@/lib/errors";
+import { humanError, messageOf } from "@/lib/errors";
 import { readStored, writeStored } from "@/lib/storage";
 import type { AppSettings } from "@/lib/types";
 
 const LAST_VAULT = "deja.vault";
-
-const message = (problem: unknown) => (problem instanceof Error ? problem.message : String(problem));
 
 export async function openVault(path: string) {
   dispatch({ type: "OPEN", path });
@@ -18,7 +16,7 @@ export async function openVault(path: string) {
     writeStored(LAST_VAULT, path);
     dispatch({ type: "OPENED", view });
   } catch (problem) {
-    dispatch({ type: "OPEN_FAILED", error: message(problem) });
+    dispatch({ type: "OPEN_FAILED", error: messageOf(problem) });
   }
 }
 

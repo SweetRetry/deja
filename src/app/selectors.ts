@@ -4,9 +4,10 @@
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { shownPaths } from "@/features/browse/browse";
-import { belowMatch, usePreferences } from "@/features/settings/preferences";
+import { isBelowMatch, usePreferences } from "@/features/settings/preferences";
 import { moveTargets } from "@/features/sidebar/folder-tree";
 import type { Entry } from "@/lib/types";
+import { baseName } from "@/lib/utils";
 import { useSession } from "./store";
 
 const NONE: Entry[] = [];
@@ -22,7 +23,7 @@ export function useWallEntries(): Entry[] {
       if (!byPath || !paths) return NONE;
       const scores = s.browse.lens ? undefined : s.browse.results.scores;
       return paths.flatMap((path) =>
-        belowMatch(scores?.[path]?.match, hideUnder) ? [] : (byPath[path] ?? []),
+        isBelowMatch(scores?.[path]?.match, hideUnder) ? [] : (byPath[path] ?? []),
       );
     }),
   );
@@ -47,7 +48,7 @@ export const useDropTarget = () =>
   useSession((s) => {
     const root = s.vault.library?.root;
     if (!root) return null;
-    return s.browse.filter.folder.split("/").pop() || root.split("/").pop() || root;
+    return baseName(s.browse.filter.folder, baseName(root, root));
   });
 
 export const useSemanticEnabled = () => useSession((s) => s.vault.settings?.semantic ?? false);
@@ -56,7 +57,7 @@ export const useSemanticEnabled = () => useSession((s) => s.vault.settings?.sema
 export function useMoveTargets() {
   const folders = useSession((s) => s.vault.library?.folders);
   const root = useSession((s) => s.vault.library?.root ?? "");
-  return useMemo(() => moveTargets(folders ?? [], root.split("/").pop() || "根目录"), [folders, root]);
+  return useMemo(() => moveTargets(folders ?? [], baseName(root, "根目录")), [folders, root]);
 }
 
 /** The picked files, in the order they were picked; empty with one file chosen. */
