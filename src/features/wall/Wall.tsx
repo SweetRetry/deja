@@ -1,10 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useSession, type Session } from "@/app/store";
-import { useRoot, useWallEntries, useWallLoading } from "@/app/selectors";
+import { useRoot, useScores, useWallEntries, useWallLoading } from "@/app/selectors";
 import { clearPicked, openViewer, pickAll, select } from "@/features/browse/commands";
 import { isBelowMatch, THUMB_WIDTH, usePreferences } from "@/features/settings/preferences";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DuplicateGroup, Entry, SearchScore } from "@/lib/types";
+import type { DuplicateGroup, Entry } from "@/lib/types";
 import { useHotkey } from "@/lib/use-hotkey";
 import { cn } from "@/lib/utils";
 import { CAPTION_HEIGHT, layout, step } from "./layout";
@@ -16,11 +16,7 @@ import { useViewport } from "./use-viewport";
 /** px-6 on both sides of the scroll container. */
 const PADDING_X = 48;
 const OVERSCAN = 600;
-const NO_SCORES: Record<string, SearchScore> = {};
 const NO_NOTES = new Map<string, string>();
-
-// A lens ranks by its own rule, so the search's scores do not apply to it.
-const scoresOf = (s: Session) => (s.browse.lens ? NO_SCORES : s.browse.results.scores);
 
 /** Changes whenever the result set means something new; the wall returns to the top. */
 const scrollKeyOf = (s: Session) => {
@@ -71,7 +67,7 @@ export function Wall({ empty }: { empty: React.ReactNode }) {
   const byPath = useSession((s) => s.vault.library?.byPath);
   const notes = useMemo(() => copyNotes(groups, byPath), [groups, byPath]);
   const breaks = useMemo(() => (groups ? new Set(groups.map((group) => group.paths[0] ?? "")) : undefined), [groups]);
-  const scores = useSession(scoresOf);
+  const scores = useScores();
   const scrollKey = useSession(scrollKeyOf);
   const mode = usePreferences((p) => p.layout);
   const cell = usePreferences((p) => THUMB_WIDTH[p.size]);

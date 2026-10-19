@@ -6,11 +6,17 @@ import { useShallow } from "zustand/react/shallow";
 import { shownPaths } from "@/features/browse/browse";
 import { isBelowMatch, usePreferences } from "@/features/settings/preferences";
 import { moveTargets } from "@/features/sidebar/folder-tree";
-import type { Entry } from "@/lib/types";
+import type { Entry, SearchScore } from "@/lib/types";
 import { baseName } from "@/lib/utils";
-import { useSession } from "./store";
+import { useSession, type Session } from "./store";
 
 const NONE: Entry[] = [];
+const NO_SCORES: Record<string, SearchScore> = {};
+
+// A lens ranks by its own rule, so the search's scores do not apply to it.
+const scoresOf = (s: Session) => (s.browse.lens ? NO_SCORES : s.browse.results.scores);
+
+export const useScores = () => useSession(scoresOf);
 
 /** The tiles on the wall, in order: the lens when one is up, else the
  *  results, less any the user hides for scoring under the lowest match. */
@@ -21,7 +27,7 @@ export function useWallEntries(): Entry[] {
       const byPath = s.vault.library?.byPath;
       const paths = shownPaths(s.browse);
       if (!byPath || !paths) return NONE;
-      const scores = s.browse.lens ? undefined : s.browse.results.scores;
+      const scores = scoresOf(s);
       return paths.flatMap((path) =>
         isBelowMatch(scores?.[path]?.match, hideUnder) ? [] : (byPath[path] ?? []),
       );
