@@ -125,16 +125,6 @@ static STATE: std::sync::Mutex<State> = std::sync::Mutex::new(State::Stopped);
 /// talking to stale code.
 static LIFELINE: std::sync::Mutex<Option<std::process::ChildStdin>> = std::sync::Mutex::new(None);
 
-fn current() -> State {
-  STATE.lock().map(|guard| *guard).unwrap_or(State::Stopped)
-}
-
-fn set(state: State) {
-  if let Ok(mut guard) = STATE.lock() {
-    *guard = state;
-  }
-}
-
 fn health_probe() -> bool {
   request("/health", None, Duration::from_millis(600)).is_ok()
 }
@@ -147,17 +137,21 @@ pub fn state() -> State {
 
 /// `state` with the probe passed in, so a test can stand in for the sidecar.
 fn refresh(healthy: &dyn Fn() -> bool) -> State {
-  match STATE.try_lock() {
-    Ok(mut guard) => {
-      if *guard == State::Ready && !healthy() {
-        *guard = advance(*guard, Transition::BecameUnhealthy);
-      }
-      *guard
-    }
-    // Another caller is probing right now; answer as if the model were still
-    // coming up, which no caller acts on.
-    Err(_) => State::Starting,
+  let mut guard = STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  if *guard == State::Ready && !healthy() {
+    *guard = advance(*guard, Transition::BecameUnhealthy);
   }
+  *guard
+}
+
+/// Applies `transition` under the lock and returns the state it found. A
+/// caller that finds Stopped or Failed under Spawn has moved it to Starting
+/// itself, so it alone owns the process launch.
+fn transition(transition: Transition) -> State {
+  let mut guard = STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  let before = *guard;
+  *guard = advance(before, transition);
+  before
 }
 
 /// For callers that need the model now: ready stays ready, a model that idled
@@ -194,7 +188,9 @@ pub fn ensure_started(timeout: Duration) -> Result<u128, String> {
 /// `ensure_started` with its two effects passed in: how to spawn the process
 /// and how to ask whether it answers.
 fn start(timeout: Duration, spawn: &dyn Fn() -> Result<(), String>, healthy: &dyn Fn() -> bool) -> Result<u128, String> {
-  match refresh(healthy) {
+  // A model that idled out is noticed before the claim, so it is started again.
+  refresh(healthy);
+  match transition(Transition::Spawn) {
     State::Ready => return Ok(0),
     State::Starting => {
       // Another caller owns the spawn; wait for it instead of starting a second.
@@ -207,19 +203,18 @@ fn start(timeout: Duration, spawn: &dyn Fn() -> Result<(), String>, healthy: &dy
       }
       return Err("another caller is still starting the model".into());
     }
-    _ => {}
+    State::Stopped | State::Failed => {}
   }
-  set(advance(current(), Transition::Spawn));
   spawn()?;
   let started = Instant::now();
   while started.elapsed() < timeout {
     if healthy() {
-      set(advance(current(), Transition::BecameReady));
+      transition(Transition::BecameReady);
       return Ok(started.elapsed().as_millis());
     }
     std::thread::sleep(Duration::from_millis(250));
   }
-  set(advance(current(), Transition::Failed));
+  transition(Transition::Failed);
   Err(format!("model did not answer within {}s", timeout.as_secs()))
 }
 
@@ -330,6 +325,46 @@ mod tests {
     assert_eq!(advance(State::Ready, Transition::Spawn), State::Ready, "ready never spawns again");
     assert_eq!(advance(State::Starting, Transition::BecameReady), State::Ready);
     assert_eq!(advance(State::Ready, Transition::BecameUnhealthy), State::Stopped, "an idle exit is noticed");
+  }
+
+  /// Tests that drive the process-wide STATE take this lock so they do not
+  /// see each other's transitions.
+  static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+  fn reset() {
+    *STATE.lock().expect("state lock") = State::Stopped;
+  }
+
+  #[test]
+  fn parallel_callers_spawn_one_process() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    for round in 0..200 {
+      reset();
+      let spawns = AtomicUsize::new(0);
+      let barrier = std::sync::Barrier::new(8);
+      let spawn = || {
+        spawns.fetch_add(1, SeqCst);
+        Ok(())
+      };
+      // The fake model answers the moment anyone has spawned it.
+      let healthy = || spawns.load(SeqCst) > 0;
+      std::thread::scope(|scope| {
+        let callers: Vec<_> = (0..8)
+          .map(|_| {
+            scope.spawn(|| {
+              barrier.wait();
+              start(Duration::from_secs(5), &spawn, &healthy)
+            })
+          })
+          .collect();
+        for caller in callers {
+          caller.join().expect("caller thread").expect("every caller gets a ready model");
+        }
+      });
+      assert_eq!(spawns.load(SeqCst), 1, "round {round}: one process for eight callers");
+      assert_eq!(refresh(&healthy), State::Ready);
+    }
   }
 
   #[test]
