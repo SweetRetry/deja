@@ -579,7 +579,10 @@ fn trash_entries(args: &Value) -> Result<Value, String> {
 
 /// Moves files into another vault folder, numbering a name that is taken the
 /// way Finder does. Tags, the thumbnail and the vector go along, so nothing is
-/// derived again. A file already in the folder stays put.
+/// derived again. A file already in the folder stays put. A file that cannot
+/// move does not stop the rest; the reply names the last error, and the view
+/// and the cache follow whatever did move. Only a request where nothing
+/// moved and something failed is an error.
 fn move_entries(args: &Value) -> Result<Value, String> {
   let rels = rel_paths(args)?;
   let folder = args.get("folder").and_then(Value::as_str).unwrap_or("").to_string();
@@ -587,6 +590,7 @@ fn move_entries(args: &Value) -> Result<Value, String> {
     listed(engine, &rels)?;
     let dir = import::vault_dir(&engine.root, &folder)?;
     let mut moved: Vec<(String, String)> = Vec::new();
+    let mut error: Option<String> = None;
     for rel in &rels {
       let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
       if parent == folder {
@@ -594,7 +598,10 @@ fn move_entries(args: &Value) -> Result<Value, String> {
       }
       let name = import::unique(&dir, name);
       let to = import::rel_in(&folder, &name);
-      std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
+      if let Err(e) = std::fs::rename(engine.root.join(rel), dir.join(&name)) {
+        error = Some(format!("move failed: {e}"));
+        continue;
+      }
       let sidecar = meta::meta_path(&engine.root, rel);
       if sidecar.exists() {
         let target = meta::meta_path(&engine.root, &to);
@@ -619,8 +626,11 @@ fn move_entries(args: &Value) -> Result<Value, String> {
     }
     let view = rescanned(engine)?;
     save_cache(&engine.cache_dir, &engine.computed);
+    if let (true, Some(error)) = (moved.is_empty(), &error) {
+      return Err(error.clone());
+    }
     let moved: Vec<Value> = moved.into_iter().map(|(from, to)| json!({ "from": from, "to": to })).collect();
-    Ok(json!({ "moved": moved, "view": view }))
+    Ok(json!({ "moved": moved, "error": error, "view": view }))
   })
 }
 
