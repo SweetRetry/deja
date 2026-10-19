@@ -116,15 +116,6 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
   true
 }
 
-fn orientation_of(entry: &Entry) -> &'static str {
-  match (entry.width, entry.height) {
-    (Some(w), Some(h)) if w > h => "landscape",
-    (Some(w), Some(h)) if h > w => "portrait",
-    (Some(_), Some(_)) => "square",
-    _ => "",
-  }
-}
-
 pub(crate) fn sort_static(entries: &mut [Entry], sort: &str) {
   match sort {
     "modified" => entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.rel_path.cmp(&b.rel_path))),
@@ -198,7 +189,6 @@ pub fn run(args: &Value) -> Result<Value, String> {
     .collect();
   let empty = query.is_empty();
   let mut semantic_used = false;
-  let semantic_warm_ms = 0u128;
   let mut scores = serde_json::Map::new();
 
   let ranked: Vec<Entry> = if empty {
@@ -252,7 +242,6 @@ pub fn run(args: &Value) -> Result<Value, String> {
     "entries": ranked,
     "scores": scores,
     "semantic": semantic_used,
-    "warmMs": semantic_warm_ms,
     "tookMs": started.elapsed().as_millis(),
     "colorCounts": color_counts,
   }))
@@ -267,7 +256,7 @@ pub fn similar(args: &Value) -> Result<Value, String> {
   let target = crate::entry_view(engine, &rel).ok_or_else(|| format!("{rel} is not in the vault"))?;
   let target_image = engine.vectors.vector(&rel);
   let entries: Vec<Entry> = engine.files.iter().filter_map(|f| crate::entry_view(engine, &f.rel_path)).collect();
-  let mut rows: Vec<(String, f64, f64, f64)> = Vec::new();
+  let mut rows: Vec<(String, f64)> = Vec::new();
   for entry in &entries {
     if entry.rel_path == target.rel_path {
       continue;
@@ -298,23 +287,10 @@ pub fn similar(args: &Value) -> Result<Value, String> {
         None => 0.0,
       })
       .unwrap_or(0.0);
-    let score = 0.55 * hash_score + 0.25 * color_score + 0.20 * vector_score;
-    rows.push((entry.rel_path.clone(), score, hash_score, vector_score));
+    rows.push((entry.rel_path.clone(), 0.55 * hash_score + 0.25 * color_score + 0.20 * vector_score));
   }
   rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
-  let results: Vec<Value> = rows
-    .into_iter()
-    .take(limit)
-    .map(|(rel, score, hash_score, vector_score)| {
-      json!({
-        "relPath": rel,
-        "score": (score * 1000.0).round() / 1000.0,
-        "hashScore": (hash_score * 1000.0).round() / 1000.0,
-        "vectorScore": (vector_score * 1000.0).round() / 1000.0,
-        "orientation": orientation_of(&target),
-      })
-    })
-    .collect();
+  let results: Vec<Value> = rows.into_iter().take(limit).map(|(rel, _)| json!({ "relPath": rel })).collect();
   Ok(json!({ "results": results }))
 }
 
