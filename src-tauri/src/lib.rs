@@ -463,8 +463,7 @@ fn import(args: &Value) -> Result<Value, String> {
   let items: Vec<import::Item> = serde_json::from_value(args.get("items").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("items are malformed: {e}"))?;
   let root = vault_root()?;
-  let imported = import::import_into(&root, folder, &items)?;
-  landed(&root, imported)
+  landed(&root, import::import_into(&root, folder, &items)?)
 }
 
 /// A small png of the clipboard's picture as a data URL, with its pixel size,
@@ -494,15 +493,14 @@ fn import_clipboard(args: &Value) -> Result<Value, String> {
   let picture = clipboard::read().ok_or("the clipboard holds no image")?;
   let item = import::Item { url: String::new(), name: Some("剪贴板图片".into()), source: None };
   let root = vault_root()?;
-  let imported = import::write_into(&root, folder, [Ok((&item, picture.bytes))])?;
-  landed(&root, imported)
+  landed(&root, import::write_into(&root, folder, [Ok((&item, picture.bytes))])?)
 }
 
 /// Records what an import wrote, so only that can be undone, and answers
 /// with the vault that now lists it.
-fn landed(root: &Path, imported: Vec<String>) -> Result<Value, String> {
-  IMPORTED.lock().expect("imported lock").extend(imported.iter().map(|rel| root.join(rel)));
-  Ok(json!({ "imported": imported, "view": refresh()? }))
+fn landed(root: &Path, landed: import::Landed) -> Result<Value, String> {
+  IMPORTED.lock().expect("imported lock").extend(landed.paths.iter().map(|rel| root.join(rel)));
+  Ok(json!({ "imported": landed.paths, "warning": landed.warning, "view": refresh()? }))
 }
 
 /// Takes back an import. Paths it did not write are refused, so the UI cannot

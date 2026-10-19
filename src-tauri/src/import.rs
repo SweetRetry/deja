@@ -160,20 +160,28 @@ pub fn rel_in(folder: &str, name: &str) -> String {
   }
 }
 
-/// Fetches each item and writes it into `root/folder`, returning the new
-/// relative paths.
-pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<String>, String> {
+/// What an import wrote, and the last thing that went wrong along the way when
+/// something still landed: an item that did not, or a sidecar that could not
+/// be written for one that did.
+#[derive(Debug, PartialEq)]
+pub struct Landed {
+  pub paths: Vec<String>,
+  pub warning: Option<String>,
+}
+
+/// Fetches each item and writes it into `root/folder`.
+pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Landed, String> {
   write_into(root, folder, items.iter().map(|item| fetch(&item.url).map(|bytes| (item, bytes))))
 }
 
-/// Writes each item's bytes into `root/folder` and returns the new relative
-/// paths. Items are fetched lazily, one at a time. One bad item does not stop
-/// the rest; it fails the call only if nothing landed.
+/// Writes each item's bytes into `root/folder`. Items are fetched lazily, one
+/// at a time. One bad item does not stop the rest; it fails the call only if
+/// nothing landed. A file on disk is always in `paths`, so it can be undone.
 pub fn write_into<'a>(
   root: &Path,
   folder: &str,
   fetched: impl IntoIterator<Item = Result<(&'a Item, Vec<u8>), String>>,
-) -> Result<Vec<String>, String> {
+) -> Result<Landed, String> {
   let dir = vault_dir(root, folder)?;
   let mut imported = Vec::new();
   let mut last_error = None;
@@ -197,13 +205,15 @@ pub fn write_into<'a>(
     let rel = rel_in(folder, &name);
     let source = item.source.clone().filter(|s| s.starts_with("http"));
     if source.is_some() {
-      meta::write(root, &rel, &Meta { source, ..Meta::default() })?;
+      if let Err(error) = meta::write(root, &rel, &Meta { source, ..Meta::default() }) {
+        last_error = Some(format!("source not saved for {rel}: {error}"));
+      }
     }
     imported.push(rel);
   }
   match (imported.is_empty(), last_error) {
     (true, Some(error)) => Err(error),
-    _ => Ok(imported),
+    (_, warning) => Ok(Landed { paths: imported, warning }),
   }
 }
 
@@ -249,8 +259,27 @@ mod tests {
     std::fs::create_dir_all(&dir).unwrap();
     let pasted = item("", Some("剪贴板图片"));
     let landed = write_into(&dir, "", [Ok((&pasted, b"\x89PNG\r\n\x1a\nrest".to_vec()))]).unwrap();
-    assert_eq!(landed, vec!["剪贴板图片.png"]);
+    assert_eq!(landed, Landed { paths: vec!["剪贴板图片.png".into()], warning: None });
     assert_eq!(std::fs::read(dir.join("剪贴板图片.png")).unwrap(), b"\x89PNG\r\n\x1a\nrest");
+    let _ = std::fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn a_file_that_landed_is_reported_even_when_its_sidecar_fails() {
+    let dir = std::env::temp_dir().join(format!("deja-import-sidecar-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // A plain file where the metadata folder goes, so no sidecar can be written.
+    std::fs::write(dir.join(".deja"), b"").unwrap();
+    let png = base64::engine::general_purpose::STANDARD.encode(b"\x89PNG\r\n\x1a\nrest");
+    let mut drop = item(&format!("data:image/png;base64,{png}"), Some("图.png"));
+    drop.source = Some("https://example.com/pic".into());
+
+    let landed = import_into(&dir, "", &[drop]);
+    assert!(dir.join("图.png").exists(), "the picture is on disk");
+    let landed = landed.expect("the import succeeds");
+    assert_eq!(landed.paths, vec!["图.png".to_string()], "so undo must know about it");
+    assert!(landed.warning.unwrap_or_default().starts_with("source not saved for 图.png"));
     let _ = std::fs::remove_dir_all(&dir);
   }
 
@@ -264,8 +293,8 @@ mod tests {
     let mut drop = item(&url, Some("图.png"));
     drop.source = Some("https://example.com/pic".into());
 
-    assert_eq!(import_into(&dir, "参考", &[drop]).unwrap(), vec!["参考/图.png"]);
-    let second = import_into(&dir, "参考", &[item(&url, Some("图.png"))]).unwrap();
+    assert_eq!(import_into(&dir, "参考", &[drop]).unwrap().paths, vec!["参考/图.png"]);
+    let second = import_into(&dir, "参考", &[item(&url, Some("图.png"))]).unwrap().paths;
     assert_eq!(second, vec!["参考/图 2.png"]);
     assert_eq!(meta::read(&dir, "参考/图.png").source.as_deref(), Some("https://example.com/pic"));
     assert!(import_into(&dir, "../x", &[item(&url, None)]).is_err());
