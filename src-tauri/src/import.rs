@@ -4,7 +4,7 @@
 use crate::{meta, Meta};
 use base64::Engine as _;
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 #[derive(Deserialize, Debug)]
@@ -141,16 +141,29 @@ pub fn unique(dir: &Path, name: &str) -> String {
     .expect("some number is free")
 }
 
+/// The folder `folder` names inside the vault. A path that climbs out, or
+/// passes through a hidden folder, is refused like one that does not exist.
+pub fn vault_dir(root: &Path, folder: &str) -> Result<PathBuf, String> {
+  let dir = if folder.is_empty() { root.to_path_buf() } else { root.join(folder) };
+  if folder.split('/').any(|part| part == ".." || part.starts_with('.')) || !dir.is_dir() {
+    return Err(format!("{folder} is not in the vault"));
+  }
+  Ok(dir)
+}
+
+/// `name` inside `folder`, as a vault relative path; "" is the vault root.
+pub fn rel_in(folder: &str, name: &str) -> String {
+  if folder.is_empty() {
+    name.to_string()
+  } else {
+    format!("{folder}/{name}")
+  }
+}
+
 /// Writes each item into `root/folder` and returns the new relative paths.
 /// One bad item does not stop the rest; it fails the call only if nothing landed.
 pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<String>, String> {
-  if folder.split('/').any(|part| part == ".." || part.starts_with('.')) {
-    return Err(format!("{folder} is not in the vault"));
-  }
-  let dir = if folder.is_empty() { root.to_path_buf() } else { root.join(folder) };
-  if !dir.is_dir() {
-    return Err(format!("{folder} is not in the vault"));
-  }
+  let dir = vault_dir(root, folder)?;
   let mut imported = Vec::new();
   let mut last_error = None;
   for item in items {
@@ -170,7 +183,7 @@ pub fn import_into(root: &Path, folder: &str, items: &[Item]) -> Result<Vec<Stri
       last_error = Some(format!("write failed: {error}"));
       continue;
     }
-    let rel = if folder.is_empty() { name } else { format!("{folder}/{name}") };
+    let rel = rel_in(folder, &name);
     let source = item.source.clone().filter(|s| s.starts_with("http"));
     if source.is_some() {
       meta::write(root, &rel, &Meta { source, ..Meta::default() })?;

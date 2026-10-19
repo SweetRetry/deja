@@ -482,8 +482,7 @@ fn import_items(folder: &str, items: &[import::Item]) -> Result<Value, String> {
 /// Takes back an import. Paths it did not write are refused, so the UI cannot
 /// be used to delete the user's own files.
 fn undo_import(args: &Value) -> Result<Value, String> {
-  let rels: Vec<String> = serde_json::from_value(args.get("relPaths").cloned().unwrap_or(json!([])))
-    .map_err(|e| format!("relPaths are malformed: {e}"))?;
+  let rels = rel_paths(args)?;
   let root = ENGINE.lock().expect("engine lock").as_ref().ok_or("no vault open")?.root.clone();
   let mut imported = IMPORTED.lock().expect("imported lock");
   if let Some(rel) = rels.iter().find(|rel| !imported.contains(&root.join(rel))) {
@@ -512,9 +511,7 @@ fn reveal(args: &Value) -> Result<Value, String> {
   let path = {
     let guard = ENGINE.lock().expect("engine lock");
     let engine = guard.as_ref().ok_or("no vault open")?;
-    if !engine.files.iter().any(|file| file.rel_path == rel) {
-      return Err(format!("{rel} is not in the vault"));
-    }
+    listed(engine, &[rel.to_string()])?;
     engine.root.join(rel)
   };
   std::process::Command::new("open")
@@ -567,13 +564,7 @@ fn move_entries(args: &Value) -> Result<Value, String> {
   let mut guard = ENGINE.lock().expect("engine lock");
   let engine = guard.as_mut().ok_or("no vault open")?;
   listed(engine, &rels)?;
-  if folder.split('/').any(|part| part == ".." || part.starts_with('.')) {
-    return Err(format!("{folder} is not in the vault"));
-  }
-  let dir = if folder.is_empty() { engine.root.clone() } else { engine.root.join(&folder) };
-  if !dir.is_dir() {
-    return Err(format!("{folder} is not in the vault"));
-  }
+  let dir = import::vault_dir(&engine.root, &folder)?;
   let mut moved: Vec<(String, String)> = Vec::new();
   for rel in &rels {
     let (parent, name) = rel.rsplit_once('/').unwrap_or(("", rel));
@@ -581,7 +572,7 @@ fn move_entries(args: &Value) -> Result<Value, String> {
       continue;
     }
     let name = import::unique(&dir, name);
-    let to = if folder.is_empty() { name.clone() } else { format!("{folder}/{name}") };
+    let to = import::rel_in(&folder, &name);
     std::fs::rename(engine.root.join(rel), dir.join(&name)).map_err(|e| format!("move failed: {e}"))?;
     let sidecar = meta::meta_path(&engine.root, rel);
     if sidecar.exists() {
@@ -626,7 +617,7 @@ fn create_folder(args: &Value) -> Result<Value, String> {
   if !parent.is_empty() && !engine.dirs.contains(&parent) {
     return Err(format!("{parent} is not in the vault"));
   }
-  let rel = if parent.is_empty() { name.clone() } else { format!("{parent}/{name}") };
+  let rel = import::rel_in(&parent, &name);
   let dir = engine.root.join(&rel);
   if dir.exists() {
     return Err(format!("{rel} already exists"));
