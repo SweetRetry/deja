@@ -77,8 +77,18 @@ fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
   assert_eq!(first["scope"]["excluded"], json!([]));
   assert_eq!(first["scope"]["tree"][0], json!({ "path": "", "files": 12 }), "the root comes first and counts all");
   assert_eq!(first["total"], json!(12));
+  assert_eq!((first["indexed"].clone(), first["phase"].clone()), (json!(0), json!("deriving")));
+  let step = dispatch("index_slice", &json!({ "batch": 5 })).expect("index a slice");
+  assert_eq!(
+    (step["derived"].clone(), step["indexed"].clone(), step["remaining"].clone(), step["total"].clone()),
+    (json!(5), json!(5), json!(7), json!(12)),
+    "one slice derives exactly its batch and counts what is left"
+  );
   let progress = dispatch("index_slice", &json!({ "batch": 100 })).expect("index");
   assert_eq!((progress["indexed"].clone(), progress["remaining"].clone()), (json!(12), json!(0)));
+  assert_eq!(progress["derived"], json!(7), "the second slice takes only the rest");
+  let idle = dispatch("index_slice", &json!({ "batch": 100 })).expect("idle slice");
+  assert_eq!((idle["derived"].clone(), idle["remaining"].clone()), (json!(0), json!(0)));
 
   let narrowed = dispatch("set_scope", &json!({ "excluded": ["摄影/人像", "摄影/人像/深"] })).expect("set scope");
   assert_eq!(narrowed["scope"]["chosen"], json!(true));

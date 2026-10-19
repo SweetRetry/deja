@@ -99,7 +99,6 @@ pub struct Engine {
   /// Kept for every walked file, excluded ones too, so bringing a folder back
   /// into scope costs nothing.
   pub computed: BTreeMap<String, Computed>,
-  pub pending: Vec<usize>,
   pub vectors: vectors::Vectors,
   pub scope: scope::Scope,
   pub tree: Vec<scope::FolderCount>,
@@ -110,8 +109,8 @@ pub struct Engine {
 
 /// What the background work is doing right now. The UI mirrors this instead of
 /// inferring it from counters.
-pub fn phase_of(pending: usize, embedded: usize, total: usize) -> &'static str {
-  if pending > 0 {
+pub fn phase_of(remaining: usize, embedded: usize, total: usize) -> &'static str {
+  if remaining > 0 {
     "deriving"
   } else if embedded < total {
     "embedding"
@@ -260,6 +259,28 @@ fn settled(engine: &Engine) -> usize {
     .count()
 }
 
+/// Derived from the file as it is now on disk, by the current analysis.
+fn derived(engine: &Engine, file: &scan::RawFile) -> bool {
+  engine.computed.get(&file.rel_path).is_some_and(|c| c.matches(file))
+}
+
+/// The counters both the vault view and each index slice report.
+struct Progress {
+  indexed: usize,
+  embedded: usize,
+  total: usize,
+  remaining: usize,
+}
+
+fn progress(engine: &Engine) -> Progress {
+  Progress {
+    indexed: engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count(),
+    embedded: settled(engine),
+    total: engine.files.len(),
+    remaining: engine.files.iter().filter(|f| !derived(engine, f)).count(),
+  }
+}
+
 /// The vault as the frontend first sees it. `sort` matches what the first
 /// search will answer with, so the wall does not reorder itself once that lands.
 fn snapshot(engine: &Engine, sort: &str) -> Value {
@@ -269,17 +290,16 @@ fn snapshot(engine: &Engine, sort: &str) -> Value {
     .map(|f| entry_from(f, engine.computed.get(&f.rel_path), &engine.root, &engine.vectors))
     .collect();
   search::sort_static(&mut entries, sort);
-  let indexed = entries.iter().filter(|e| e.indexed).count();
-  let embedded = settled(engine);
+  let progress = progress(engine);
   json!({
     "root": engine.root.to_string_lossy(),
     "scope": { "chosen": engine.scope.chosen, "excluded": engine.scope.excluded, "tree": engine.tree },
     "folders": folders_of(&engine.files, &engine.dirs),
     "entries": entries,
-    "indexed": indexed,
-    "embedded": embedded,
-    "total": engine.files.len(),
-    "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
+    "indexed": progress.indexed,
+    "embedded": progress.embedded,
+    "total": progress.total,
+    "phase": phase_of(progress.remaining, progress.embedded, progress.total),
     "model": { "ready": model::healthy() },
   })
 }
@@ -370,7 +390,6 @@ fn open_vault(args: &Value) -> Result<Value, String> {
     vectors: vectors::Vectors::open(&cache_dir.join("vectors.db"))?,
     cache_dir,
     files: Vec::new(),
-    pending: Vec::new(),
     scope: scope::read(&expanded),
     tree: Vec::new(),
     dirs: Vec::new(),
@@ -408,7 +427,7 @@ fn watch_folder(root: &Path) {
 }
 
 /// Walks the whole vault: the tree and the caches follow what is on disk, and
-/// only files in scope become the engine's files and pending work.
+/// only files in scope become the engine's files.
 fn rescan(engine: &mut Engine) -> Result<(), String> {
   let (walked, dirs) = scan::walk_all(&engine.root);
   let keep: Vec<String> = walked.iter().map(|f| f.rel_path.clone()).collect();
@@ -419,13 +438,6 @@ fn rescan(engine: &mut Engine) -> Result<(), String> {
   // A folder is in scope when what it holds would be.
   engine.dirs = dirs.into_iter().filter(|dir| engine.scope.contains(&format!("{dir}/"))).collect();
   engine.files = walked.into_iter().filter(|f| engine.scope.contains(&f.rel_path)).collect();
-  engine.pending = engine
-    .files
-    .iter()
-    .enumerate()
-    .filter(|(_, f)| !engine.computed.get(&f.rel_path).map(|c| c.matches(f)).unwrap_or(false))
-    .map(|(i, _)| i)
-    .collect();
   Ok(())
 }
 
@@ -676,11 +688,9 @@ fn index_slice(args: &Value) -> Result<Value, String> {
   let batch = args.get("batch").and_then(Value::as_u64).unwrap_or(2) as usize;
   let model_ready = settings::get().semantic && model::ready_or_restart();
   with_engine(|engine| {
-    let derived = batch.min(engine.pending.len());
-    for _ in 0..derived {
-      let index = engine.pending.remove(0);
-      let file = engine.files[index].clone();
-      let computed = thumb::build(&engine.cache_dir, &file);
+    let todo: Vec<scan::RawFile> = engine.files.iter().filter(|f| !derived(engine, f)).take(batch).cloned().collect();
+    for file in &todo {
+      let computed = thumb::build(&engine.cache_dir, file);
       engine.computed.insert(file.rel_path.clone(), computed);
     }
 
@@ -717,18 +727,17 @@ fn index_slice(args: &Value) -> Result<Value, String> {
       }
     }
 
-    if derived > 0 || embedded_now > 0 {
+    if !todo.is_empty() || embedded_now > 0 {
       save_cache(&engine.cache_dir, &engine.computed);
     }
-    let indexed = engine.files.iter().filter(|f| engine.computed.contains_key(&f.rel_path)).count();
-    let embedded = settled(engine);
+    let progress = progress(engine);
     Ok(json!({
-      "indexed": indexed,
-      "embedded": embedded,
-      "total": engine.files.len(),
-      "remaining": engine.pending.len(),
-      "phase": phase_of(engine.pending.len(), embedded, engine.files.len()),
-      "derived": derived,
+      "indexed": progress.indexed,
+      "embedded": progress.embedded,
+      "total": progress.total,
+      "remaining": progress.remaining,
+      "phase": phase_of(progress.remaining, progress.embedded, progress.total),
+      "derived": todo.len(),
       "embeddedNow": embedded_now,
       "modelReady": model::healthy(),
       "modelError": embed_error,
