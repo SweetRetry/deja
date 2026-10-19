@@ -1,4 +1,5 @@
 use crate::color::{self, Family};
+use crate::scan::Kind;
 use crate::{model, Engine, Entry, ENGINE};
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
@@ -9,7 +10,7 @@ use std::collections::BTreeSet;
 #[derive(Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Filter {
-  pub kinds: Vec<String>,
+  pub kinds: Vec<Kind>,
   pub min_width: Option<u32>,
   /// A colour family by name ("blue"), or by a swatch hex from before the
   /// menu knew the names.
@@ -314,7 +315,7 @@ mod tests {
       rel_path: rel.into(),
       name: name.into(),
       ext: "png".into(),
-      kind: "image".into(),
+      kind: Kind::Image,
       size_bytes: 100,
       modified: 1_700_000_000_000,
       width: Some(1200),
@@ -357,7 +358,7 @@ mod tests {
   #[test]
   fn filters_narrow_by_kind_size_and_color() {
     let item = entry("海边.png", "摄影/海边.png", &[], "");
-    let mut filter = Filter { kinds: vec!["video".into()], ..Default::default() };
+    let mut filter = Filter { kinds: vec![Kind::Video], ..Default::default() };
     assert!(!passes(&item, &filter));
     filter = Filter { min_width: Some(2000), ..Default::default() };
     assert!(!passes(&item, &filter));
@@ -381,7 +382,7 @@ mod tests {
     assert_eq!(parsed.query, " 海边 ");
     assert_eq!(parsed.sort.as_deref(), Some("modified"));
     assert_eq!(parsed.semantic, Some(false));
-    assert_eq!(parsed.filter.kinds, vec!["image"]);
+    assert_eq!(parsed.filter.kinds, vec![Kind::Image]);
     assert_eq!(parsed.filter.color, None, "an empty colour narrows nothing");
 
     let bare: SearchArgs = serde_json::from_value(json!({})).expect("every field has a default");
@@ -393,10 +394,21 @@ mod tests {
     let by_hex: Filter = serde_json::from_value(json!({ "color": "#3065be" })).expect("hex");
     assert_eq!((by_name.color, by_hex.color), (Some(Family::Blue), Some(Family::Blue)));
     assert!(serde_json::from_value::<Filter>(json!({ "color": "bleu" })).is_err());
+    // A kind the vault does not have is refused, not quietly matched by nothing.
+    let both: Filter = serde_json::from_value(json!({ "kinds": ["image", "video"] })).expect("kinds");
+    assert_eq!(both.kinds, vec![Kind::Image, Kind::Video]);
+    assert!(serde_json::from_value::<Filter>(json!({ "kinds": ["gif"] })).is_err());
+    assert!(run(&json!({ "filter": { "kinds": ["Image"] } })).unwrap_err().starts_with("search: "));
 
     let similar: SimilarArgs = serde_json::from_value(json!({ "relPath": "a.png", "limit": 24 })).expect("similar");
     assert_eq!((similar.rel_path.as_str(), similar.limit), ("a.png", Some(24)));
     assert!(serde_json::from_value::<SimilarArgs>(json!({ "limit": 3 })).is_err(), "relPath is required");
+  }
+
+  #[test]
+  fn an_entry_names_its_kind_as_the_frontend_does() {
+    let sent = serde_json::to_value(entry("a.png", "a.png", &[], "")).expect("serialize");
+    assert_eq!(sent["kind"], json!("image"));
   }
 
   #[test]

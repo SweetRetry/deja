@@ -1,5 +1,6 @@
 // Which files are the same picture: byte-identical copies, and re-saves of one
 // picture (resized, recompressed, another format) whose dHashes agree.
+use crate::scan::Kind;
 use crate::{color, Entry};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -36,7 +37,7 @@ struct Print {
 /// The lead colour must agree too, which keeps flat pictures of different
 /// colours (all of which hash to zero) apart.
 fn print(entry: &Entry) -> Option<Print> {
-  if entry.kind != "image" || entry.dhash.len() != 16 {
+  if entry.kind != Kind::Image || entry.dhash.len() != 16 {
     return None;
   }
   Some(Print {
@@ -119,7 +120,7 @@ mod tests {
       rel_path: rel.into(),
       name: rel.rsplit('/').next().unwrap().into(),
       ext: "jpg".into(),
-      kind: "image".into(),
+      kind: Kind::Image,
       size_bytes: size,
       modified: 0,
       width: Some(w),

@@ -1,21 +1,14 @@
 use crate::{IMAGE_EXTS, VIDEO_EXTS};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// What a media file is, by its extension.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// What a media file is, by its extension. On the wire it is the name the
+/// frontend filters and labels by: "image" or "video" (src/lib/types.ts Kind).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Kind {
   Image,
   Video,
-}
-
-impl Kind {
-  /// The name the frontend filters and labels by.
-  pub fn as_str(self) -> &'static str {
-    match self {
-      Kind::Image => "image",
-      Kind::Video => "video",
-    }
-  }
 }
 
 #[derive(Clone, Debug)]
