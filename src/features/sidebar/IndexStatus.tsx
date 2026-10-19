@@ -26,19 +26,36 @@ export function IndexStatus() {
   if (!status) return null;
 
   const pauseLabel = status.paused ? "继续索引" : "暂停索引";
+  // A passing hint rides on the label, so the footer never changes height; only
+  // a failure that needs a click gets its own line (IndexNotice).
+  const hint = status.notice && !status.notice.retry ? status.notice.text : null;
+  const labelClass = "min-w-0 flex-1 truncate";
+  const label = <span className={labelClass} data-testid="index-status" />;
+  const text = (
+    <>
+      {status.label}
+      {status.count ? (
+        <>
+          {" "}
+          <RollingNumber value={status.count.done} />/{status.count.total}
+        </>
+      ) : null}
+    </>
+  );
 
   return (
     <>
       <StatusDot tone={status.tone} />
-      <span className="min-w-0 flex-1 truncate" data-testid="index-status">
-        {status.label}
-        {status.count ? (
-          <>
-            {" "}
-            <RollingNumber value={status.count.done} />/{status.count.total}
-          </>
-        ) : null}
-      </span>
+      {hint ? (
+        <Tooltip>
+          <TooltipTrigger render={label}>{text}</TooltipTrigger>
+          <TooltipContent>{hint}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className={labelClass} data-testid="index-status">
+          {text}
+        </span>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -59,10 +76,10 @@ export function IndexStatus() {
   );
 }
 
-/** Why search is keyword-only right now, below the footer line. */
+/** A failed model start, below the footer line, with the way to retry it. */
 export function IndexNotice() {
   const notice = useStatus()?.notice;
-  if (!notice) return null;
+  if (!notice?.retry) return null;
   return (
     <div className="flex flex-col items-start gap-1">
       <p className="text-xs text-muted-foreground">{notice.text}</p>
