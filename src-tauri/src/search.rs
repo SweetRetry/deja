@@ -1,5 +1,6 @@
-use crate::{color, model, Engine, Entry, ENGINE};
-use serde::Deserialize;
+use crate::color::{self, Family};
+use crate::{model, Engine, Entry, ENGINE};
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -10,10 +11,22 @@ use std::collections::BTreeSet;
 pub struct Filter {
   pub kinds: Vec<String>,
   pub min_width: Option<u32>,
-  pub color: Option<String>,
+  /// A colour family by name ("blue"), or by a swatch hex from before the
+  /// menu knew the names.
+  #[serde(deserialize_with = "family_or_none")]
+  pub color: Option<Family>,
   pub folder: Option<String>,
   pub min_rating: Option<u8>,
   pub tag: Option<String>,
+}
+
+fn family_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Family>, D::Error> {
+  match Option::<String>::deserialize(deserializer)?.as_deref() {
+    None | Some("") => Ok(None),
+    Some(text) => Family::parse(text)
+      .map(Some)
+      .ok_or_else(|| serde::de::Error::custom(format!("{text} is not a colour name or a hex colour"))),
+  }
 }
 
 #[derive(Deserialize, Default)]
@@ -23,8 +36,6 @@ struct SearchArgs {
   sort: Option<String>,
   semantic: Option<bool>,
   filter: Filter,
-  /// Swatch hexes to count files for, in the order the counts come back.
-  count_colors: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -108,8 +119,8 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
       return false;
     }
   }
-  if let Some(hex) = filter.color.as_deref().filter(|c| !c.is_empty()) {
-    if !color::palette_matches(&entry.colors, hex) {
+  if let Some(family) = filter.color {
+    if !color::palette_matches(&entry.colors, family) {
       return false;
     }
   }
@@ -163,7 +174,7 @@ fn fuse(keyword: &[String], semantic: &[String], limit: usize) -> Vec<String> {
 }
 
 pub fn run(args: &Value) -> Result<Value, String> {
-  let SearchArgs { query, sort, semantic, filter, count_colors } =
+  let SearchArgs { query, sort, semantic, filter } =
     serde_json::from_value(args.clone()).map_err(|e| format!("search: {e}"))?;
   let query = query.trim().to_string();
   let sort = sort.unwrap_or_else(|| "name".into());
@@ -174,18 +185,17 @@ pub fn run(args: &Value) -> Result<Value, String> {
     want_semantic && crate::settings::get().semantic && !query.is_empty() && model::ready_or_restart();
   let guard = ENGINE.lock().expect("engine lock");
   let engine = guard.as_ref().ok_or("no vault open")?;
-  // Swatch counts use every filter but colour, so each swatch says how many
-  // files picking it would leave.
-  let picked = filter.color.as_deref().filter(|c| !c.is_empty());
+  // Colour counts use every filter but colour, so each swatch says how many
+  // files picking it would leave. They come back in Family::ALL order.
   let other_filters = Filter { color: None, ..filter.clone() };
   let base: Vec<Entry> = all_entries(engine).into_iter().filter(|e| passes(e, &other_filters)).collect();
-  let color_counts: Vec<usize> = count_colors
+  let color_counts: Vec<usize> = Family::ALL
     .iter()
-    .map(|hex| base.iter().filter(|entry| color::palette_matches(&entry.colors, hex)).count())
+    .map(|family| base.iter().filter(|entry| color::palette_matches(&entry.colors, *family)).count())
     .collect();
   let pool: Vec<Entry> = base
     .into_iter()
-    .filter(|e| picked.map_or(true, |hex| color::palette_matches(&e.colors, hex)))
+    .filter(|e| filter.color.map_or(true, |family| color::palette_matches(&e.colors, family)))
     .collect();
   let empty = query.is_empty();
   let mut semantic_used = false;
@@ -351,9 +361,9 @@ mod tests {
     assert!(!passes(&item, &filter));
     filter = Filter { min_width: Some(2000), ..Default::default() };
     assert!(!passes(&item, &filter));
-    filter = Filter { color: Some("#1b1b1f".into()), ..Default::default() };
+    filter = Filter { color: Some(Family::Black), ..Default::default() };
     assert!(passes(&item, &filter));
-    filter = Filter { color: Some("#00ff00".into()), ..Default::default() };
+    filter = Filter { color: Some(Family::Green), ..Default::default() };
     assert!(!passes(&item, &filter));
   }
 
@@ -372,12 +382,17 @@ mod tests {
     assert_eq!(parsed.sort.as_deref(), Some("modified"));
     assert_eq!(parsed.semantic, Some(false));
     assert_eq!(parsed.filter.kinds, vec!["image"]);
-    assert_eq!(parsed.filter.color.as_deref(), Some(""));
-    assert_eq!(parsed.count_colors.len(), 2);
+    assert_eq!(parsed.filter.color, None, "an empty colour narrows nothing");
 
     let bare: SearchArgs = serde_json::from_value(json!({})).expect("every field has a default");
     assert_eq!(bare.query, "");
-    assert!(bare.sort.is_none() && bare.semantic.is_none() && bare.count_colors.is_empty());
+    assert!(bare.sort.is_none() && bare.semantic.is_none());
+
+    // The colour arrives as a family name, or as the swatch hex older menus sent.
+    let by_name: Filter = serde_json::from_value(json!({ "color": "blue" })).expect("name");
+    let by_hex: Filter = serde_json::from_value(json!({ "color": "#3065be" })).expect("hex");
+    assert_eq!((by_name.color, by_hex.color), (Some(Family::Blue), Some(Family::Blue)));
+    assert!(serde_json::from_value::<Filter>(json!({ "color": "bleu" })).is_err());
 
     let similar: SimilarArgs = serde_json::from_value(json!({ "relPath": "a.png", "limit": 24 })).expect("similar");
     assert_eq!((similar.rel_path.as_str(), similar.limit), ("a.png", Some(24)));

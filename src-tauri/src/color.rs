@@ -92,6 +92,52 @@ pub enum Family {
   Pink,
 }
 
+impl Family {
+  /// Every family, in the order the filter menu shows its swatches. Search
+  /// answers colour counts in this order.
+  pub const ALL: [Family; 12] = [
+    Family::Black,
+    Family::Grey,
+    Family::White,
+    Family::Brown,
+    Family::Red,
+    Family::Orange,
+    Family::Yellow,
+    Family::Green,
+    Family::Cyan,
+    Family::Blue,
+    Family::Purple,
+    Family::Pink,
+  ];
+
+  /// The name the filter sends.
+  pub fn name(self) -> &'static str {
+    match self {
+      Family::Black => "black",
+      Family::Grey => "grey",
+      Family::White => "white",
+      Family::Brown => "brown",
+      Family::Red => "red",
+      Family::Orange => "orange",
+      Family::Yellow => "yellow",
+      Family::Green => "green",
+      Family::Cyan => "cyan",
+      Family::Blue => "blue",
+      Family::Purple => "purple",
+      Family::Pink => "pink",
+    }
+  }
+
+  /// A family by its name, or by a hex it names: the filter menu sent its
+  /// swatch's hex before it knew the names.
+  pub fn parse(text: &str) -> Option<Family> {
+    Family::ALL
+      .into_iter()
+      .find(|family| family.name() == text)
+      .or_else(|| hex_to_oklab(text).map(family_of))
+  }
+}
+
 /// Hue anchors in OKLCH degrees, measured off the swatches. A colour takes the
 /// nearest anchor, so the circle is a partition and no hue falls between names.
 const HUES: [(f64, Family); 8] = [
@@ -158,8 +204,7 @@ pub fn family_of(lab: Oklab) -> Family {
 /// pure black outside every swatch: 17 of 62 real images matched none, 3 do now.
 /// Neutrals sit in the shadows and backgrounds of most photos, so they must
 /// cover more of the image to count.
-pub fn palette_matches(colors: &[ColorShare], hex: &str) -> bool {
-  let Some(want) = hex_to_oklab(hex).map(family_of) else { return false };
+pub fn palette_matches(colors: &[ColorShare], want: Family) -> bool {
   let covered: f64 = colors
     .iter()
     .filter(|color| hex_to_oklab(&color.hex).is_some_and(|have| families(have).any(|f| f == want)))
@@ -452,39 +497,50 @@ mod tests {
   fn grey_portrait_is_not_dark_blue() {
     // A black-and-white photo from the assets folder.
     let grey = palette(&[("#444444", 0.25), ("#363636", 0.20), ("#575757", 0.17)]);
-    assert!(!palette_matches(&grey, "#3065be"));
-    assert!(palette_matches(&grey, "#717171"), "it is a grey picture");
+    assert!(!palette_matches(&grey, Family::Blue));
+    assert!(palette_matches(&grey, Family::Grey), "it is a grey picture");
   }
 
   #[test]
   fn mustard_is_not_green_but_fern_is() {
     let mustard = palette(&[("#946825", 0.23), ("#b1832a", 0.22), ("#ca9947", 0.20)]);
-    assert!(!palette_matches(&mustard, "#4f9b3e"));
+    assert!(!palette_matches(&mustard, Family::Green));
     let fern = palette(&[("#3f6b1c", 0.45), ("#20351a", 0.20)]);
-    assert!(palette_matches(&fern, "#4f9b3e"));
+    assert!(palette_matches(&fern, Family::Green));
   }
 
   #[test]
   fn brown_and_orange_are_told_apart_by_lightness() {
     let walnut = palette(&[("#6b4226", 0.50)]);
     let tangerine = palette(&[("#ef8a2c", 0.50)]);
-    assert!(palette_matches(&walnut, "#774826"));
-    assert!(!palette_matches(&walnut, "#e87f25"));
-    assert!(palette_matches(&tangerine, "#e87f25"));
-    assert!(!palette_matches(&tangerine, "#774826"));
+    assert!(palette_matches(&walnut, Family::Brown));
+    assert!(!palette_matches(&walnut, Family::Orange));
+    assert!(palette_matches(&tangerine, Family::Orange));
+    assert!(!palette_matches(&tangerine, Family::Brown));
   }
 
   #[test]
   fn a_shadow_does_not_make_a_picture_dark() {
     let shadowed = palette(&[("#d9d2c5", 0.50), ("#1c1c1e", 0.20)]);
-    assert!(!palette_matches(&shadowed, "#1b1b1f"));
+    assert!(!palette_matches(&shadowed, Family::Black));
     let night = palette(&[("#0b0b0d", 0.55), ("#2a2a2e", 0.15)]);
-    assert!(palette_matches(&night, "#1b1b1f"));
+    assert!(palette_matches(&night, Family::Black));
+  }
+
+  #[test]
+  fn a_family_is_parsed_from_its_name_or_its_swatch() {
+    for family in Family::ALL {
+      assert_eq!(Family::parse(family.name()), Some(family));
+    }
+    assert_eq!(Family::parse("#3065be"), Some(Family::Blue), "the hex the old filter sent");
+    assert_eq!(Family::parse(""), None);
+    assert_eq!(Family::parse("bleu"), None);
   }
 
   #[test]
   fn every_swatch_names_itself() {
-    // COLOR_PRESETS in src/lib/types.ts.
+    // COLOR_PRESETS in src/lib/types.ts, in its order: colour counts come
+    // back in Family::ALL order and the menu reads them by position.
     let swatches = [
       ("#1b1b1b", Family::Black),
       ("#717171", Family::Grey),
@@ -502,19 +558,20 @@ mod tests {
     for (hex, family) in swatches {
       assert_eq!(family_of(hex_to_oklab(hex).unwrap()), family, "{hex}");
     }
+    assert_eq!(swatches.map(|(_, family)| family), Family::ALL);
   }
 
   #[test]
   fn dark_and_muted_shades_find_their_hue() {
     // Palettes from real images that used to match no swatch at all.
     let navy = palette(&[("#0d1029", 0.351), ("#1f1d45", 0.223), ("#332b6a", 0.169)]);
-    assert!(palette_matches(&navy, "#3065be"));
+    assert!(palette_matches(&navy, Family::Blue));
     let forest = palette(&[("#2c4932", 0.313), ("#223c24", 0.188), ("#0e230f", 0.159)]);
-    assert!(palette_matches(&forest, "#4f9b3e"));
+    assert!(palette_matches(&forest, Family::Green));
     let black = palette(&[("#000000", 0.294), ("#81788d", 0.208), ("#020202", 0.202)]);
-    assert!(palette_matches(&black, "#1b1b1b"));
+    assert!(palette_matches(&black, Family::Black));
     let dusty_rose = palette(&[("#be93a7", 0.288), ("#d9bfc8", 0.179), ("#4f4650", 0.141)]);
-    assert!(palette_matches(&dusty_rose, "#e694bb"));
+    assert!(palette_matches(&dusty_rose, Family::Pink));
   }
 
   #[test]
