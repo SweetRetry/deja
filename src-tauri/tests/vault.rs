@@ -78,12 +78,15 @@ fn scope_excludes_a_subtree_and_brings_it_back_without_recomputing() {
   assert_eq!(first["scope"]["tree"][0], json!({ "path": "", "files": 12 }), "the root comes first and counts all");
   assert_eq!(first["total"], json!(12));
   assert_eq!((first["indexed"].clone(), first["phase"].clone()), (json!(0), json!("deriving")));
+  assert!(first.get("model").is_none(), "the view no longer reports the model");
+  assert!(first["entries"][0].get("dhash").is_none(), "the dhash stays in the backend");
   let step = dispatch("index_slice", &json!({ "batch": 5 })).expect("index a slice");
   assert_eq!(
     (step["derived"].clone(), step["indexed"].clone(), step["remaining"].clone(), step["total"].clone()),
     (json!(5), json!(5), json!(7), json!(12)),
     "one slice derives exactly its batch and counts what is left"
   );
+  assert!(step.get("modelReady").is_none() && step.get("phase").is_none(), "unread progress fields are gone");
   let progress = dispatch("index_slice", &json!({ "batch": 100 })).expect("index");
   assert_eq!((progress["indexed"].clone(), progress["remaining"].clone()), (json!(12), json!(0)));
   assert_eq!(progress["derived"], json!(7), "the second slice takes only the rest");

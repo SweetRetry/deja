@@ -56,6 +56,8 @@ pub struct Entry {
   pub width: Option<u32>,
   pub height: Option<u32>,
   pub colors: Vec<ColorShare>,
+  /// Compared by duplicates and similar; the frontend never reads it.
+  #[serde(skip_serializing)]
   pub dhash: String,
   pub thumb_path: Option<String>,
   pub indexed: bool,
@@ -297,7 +299,6 @@ fn snapshot(engine: &Engine, sort: &str) -> Value {
     "embedded": progress.embedded,
     "total": progress.total,
     "phase": phase_of(progress.remaining, progress.embedded, progress.total),
-    "model": { "ready": model::healthy() },
   })
 }
 
@@ -734,10 +735,8 @@ fn index_slice(args: &Value) -> Result<Value, String> {
       "embedded": progress.embedded,
       "total": progress.total,
       "remaining": progress.remaining,
-      "phase": phase_of(progress.remaining, progress.embedded, progress.total),
       "derived": todo.len(),
       "embeddedNow": embedded_now,
-      "modelReady": model::healthy(),
       "modelError": embed_error,
     }))
   })
