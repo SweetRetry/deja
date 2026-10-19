@@ -75,30 +75,12 @@ fn request(path: &str, body: Option<&str>, timeout: Duration) -> Result<Value, S
     .and_then(|line| line.split_whitespace().nth(1))
     .and_then(|code| code.parse().ok())
     .unwrap_or(0);
-  let body = if headers.to_ascii_lowercase().contains("transfer-encoding: chunked") {
-    dechunk(body)
-  } else {
-    body.to_string()
-  };
+  // The sidecar always answers with a Content-Length body (embed_server.py
+  // _send_json), never chunked, so the body is the bytes after the headers.
   if status != 200 {
     return Err(format!("sidecar said {status}: {body}"));
   }
-  serde_json::from_str(&body).map_err(|e| format!("sidecar sent invalid json: {e}"))
-}
-
-fn dechunk(body: &str) -> String {
-  let mut out = String::new();
-  let mut rest = body;
-  loop {
-    let Some((size_line, after)) = rest.split_once("\r\n") else { break };
-    let size = usize::from_str_radix(size_line.trim(), 16).unwrap_or(0);
-    if size == 0 || after.len() < size {
-      break;
-    }
-    out.push_str(&after[..size]);
-    rest = after.get(size + 2..).unwrap_or("");
-  }
-  out
+  serde_json::from_str(body).map_err(|e| format!("sidecar sent invalid json: {e}"))
 }
 
 pub fn healthy() -> bool {
@@ -342,10 +324,5 @@ mod tests {
     assert!(matches!(failed, State::Failed(_)));
     assert_eq!(advance(&failed, Transition::Spawn), State::Starting);
     assert_eq!(advance(&failed, Transition::BecameReady), failed, "only a spawn leaves failed");
-  }
-
-  #[test]
-  fn dechunk_reads_two_chunks() {
-    assert_eq!(dechunk("5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"), "hello world");
   }
 }
