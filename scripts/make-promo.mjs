@@ -3,25 +3,31 @@
 //
 //   npm run shots   # writes .shots/*.png from the real app
 //   npm run promo   # writes docs/promo.mp4
+//   npm run mg      # writes docs/mg.mp4 from promo/mg.html, which draws
+//                   # its own pictures and needs no shots
 //
 // The page's timeline is a pure function of t (window.__render), so frame 411
 // is the same picture on every machine and on every run.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { once } from "node:events";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
 const FPS = Number(process.env.PROMO_FPS ?? 30);
 const DPR = Number(process.env.PROMO_DPR ?? 2);
-const PAGE = resolve("promo/promo.html");
+const PAGE = resolve(process.env.PROMO_PAGE ?? "promo/promo.html");
 const OUT = process.env.PROMO_OUT ?? "docs/promo.mp4";
+/** The encode lands here first, so a stopped run leaves the last film intact. */
+const PART = OUT.replace(/\.mp4$/, ".part.mp4");
 /** A short loop of the three-column scene, for a README that cannot play video. */
 const LOOP = process.env.PROMO_LOOP ?? "docs/promo.gif";
 const LOOP_FROM = Number(process.env.PROMO_LOOP_FROM ?? 3.3);
 const LOOP_SECONDS = Number(process.env.PROMO_LOOP_SECONDS ?? 6.3);
+/** Optional score, loudness-normalized to -14 LUFS, the common target for social video. */
+const AUDIO = process.env.PROMO_AUDIO;
 
-const sources = [
+const sources = process.env.PROMO_PAGE ? [] : [
   ".shots/02-wall.png",
   ".shots/04-search.png",
   ".shots/05-viewer.png",
@@ -65,6 +71,7 @@ const ffmpeg = spawn(
     "png",
     "-i",
     "pipe:0",
+    ...(AUDIO ? ["-i", resolve(AUDIO)] : []),
     "-vf",
     "scale=1920:1080:flags=lanczos",
     "-c:v",
@@ -77,8 +84,8 @@ const ffmpeg = spawn(
     "yuv420p",
     "-movflags",
     "+faststart",
-    "-an",
-    OUT,
+    ...(AUDIO ? ["-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-shortest"] : ["-an"]),
+    PART,
   ],
   { stdio: ["pipe", "inherit", "inherit"] },
 );
@@ -104,6 +111,7 @@ if (code !== 0) {
 }
 
 await browser.close();
+renameSync(PART, OUT);
 
 // The loop is cut from the encode, so it cannot drift from the film.
 const loop = spawnSync(

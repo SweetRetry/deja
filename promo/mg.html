@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Déjà · motion</title>
+    <!-- Fonts come from node_modules, so a render never waits on the network. -->
+    <link rel="stylesheet" href="../node_modules/@fontsource-variable/inter/opsz.css" />
+    <link rel="stylesheet" href="../node_modules/@fontsource/jetbrains-mono/400.css" />
+    <!-- Built by scripts/make-mg-assets.mjs from a real vault: pictures, their
+         sources, and embeddinggemma-2's scores and map. -->
+    <script src=".vault/manifest.js"></script>
+    <style>
+      /* One picture carries the film. It flashes by under a hash for a name,
+         the model finds it by what it shows, it turns over to its Markdown,
+         and it folds into the icon. */
+      :root {
+        --background: oklch(0.227 0.004 286.1);
+        --surface-1: oklch(0.261 0.004 286.1);
+        --surface-2: oklch(0.294 0.004 286.2);
+        --foreground: oklch(0.971 0.003 286.4);
+        --muted: oklch(0.681 0.007 286.2);
+        --subtle: oklch(0.54 0.008 286.1);
+        --border: oklch(0.341 0.003 286.2);
+        --primary: oklch(0.712 0.164 154.1);
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--background);
+        font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+      }
+      html.preview,
+      html.preview body {
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+      }
+      html.preview #stage {
+        transform-origin: 0 0;
+      }
+
+      #stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--background);
+      }
+
+      .abs {
+        position: absolute;
+      }
+      .layer {
+        position: absolute;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .mono {
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .head {
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1.12;
+      }
+      /* A line that rises out of its own slot. */
+      .line {
+        display: block;
+        overflow: hidden;
+        padding-bottom: 0.1em;
+        margin-bottom: -0.1em;
+      }
+      .line > span {
+        display: inline-block;
+        transform: translateY(110%);
+        will-change: transform;
+      }
+      .em {
+        color: var(--primary);
+      }
+
+      /* 1. flashes */
+      #flash img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+      #chip {
+        left: 64px;
+        bottom: 64px;
+        padding: 10px 16px;
+        background: #000;
+        color: #fff;
+        font-size: 28px;
+        border-radius: 6px;
+      }
+
+      /* 2. the vault wall, faded out where the words sit */
+      #wall-view {
+        position: absolute;
+        inset: 0;
+        perspective: 2000px;
+        perspective-origin: 70% 40%;
+        -webkit-mask-image: linear-gradient(90deg, transparent 30%, #000 52%);
+        mask-image: linear-gradient(90deg, transparent 30%, #000 52%);
+      }
+      #wall {
+        position: absolute;
+        left: 640px;
+        top: -760px;
+        width: 2240px;
+        height: 2600px;
+        transform-origin: 50% 50%;
+      }
+      .col {
+        position: absolute;
+        top: 0;
+        width: 300px;
+        will-change: transform;
+      }
+      .col img {
+        display: block;
+        width: 300px;
+        margin-bottom: 20px;
+        border-radius: 14px;
+        object-fit: cover;
+      }
+      #tree {
+        font-size: 23px;
+        line-height: 1.6;
+        color: var(--muted);
+        white-space: pre;
+      }
+      #tree .dir {
+        color: var(--foreground);
+      }
+
+      /* 3. the map */
+      .thumb {
+        position: absolute;
+        overflow: hidden;
+        border-radius: 8px;
+        display: none;
+      }
+      .thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .score {
+        position: absolute;
+        display: none;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: #000;
+        color: #fff;
+        white-space: pre;
+        font-variant-numeric: tabular-nums;
+        z-index: 3;
+      }
+      #search {
+        left: 560px;
+        top: 64px;
+        width: 800px;
+        height: 72px;
+        box-sizing: border-box;
+        padding: 0 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        font-size: 30px;
+      }
+      .caret {
+        display: inline-block;
+        width: 3px;
+        height: 0.95em;
+        margin-left: 4px;
+        vertical-align: -0.12em;
+        background: var(--primary);
+      }
+      #links line {
+        stroke: var(--primary);
+        stroke-width: 2;
+      }
+
+      /* 4. the card */
+      #hero-wrap {
+        position: absolute;
+        inset: 0;
+        perspective: 2400px;
+        pointer-events: none;
+      }
+      #hero {
+        position: absolute;
+        transform-style: preserve-3d;
+        display: none;
+      }
+      #hero .face {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        backface-visibility: hidden;
+        border-radius: inherit;
+      }
+      #hero .face img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      #hero-gray {
+        position: absolute;
+        inset: 0;
+        background: #48484a;
+        opacity: 0;
+      }
+      #hero-back {
+        transform: rotateY(180deg);
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        box-sizing: border-box;
+        padding: 48px 44px;
+        font-size: 21px;
+        line-height: 1.8;
+        color: var(--muted);
+        white-space: pre;
+      }
+      #hero-back .key {
+        color: var(--foreground);
+      }
+      #hero-back .fence {
+        color: var(--subtle);
+      }
+      #hero-back .body {
+        color: var(--foreground);
+        font-family: "Inter Variable", Inter, system-ui, sans-serif;
+        font-size: 28px;
+      }
+
+      /* 5. the icon. Its own plate is #1c1c1e, this background; one step up
+         keeps the edge visible. */
+      #icon-plate {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        box-sizing: border-box;
+      }
+
+      #wipe {
+        position: absolute;
+        inset: 0;
+        background: var(--primary);
+        clip-path: inset(0 100% 0 0);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <!-- 1. flashes, then the name -->
+      <div id="flash" class="abs" style="inset: 0"></div>
+      <div id="chip" class="layer mono"></div>
+      <div id="a-top" class="abs head" style="left: 120px; top: 300px; font-size: 104px"><span class="line"><span>存下时，过目难忘。</span></span></div>
+      <div id="a-hash" class="layer mono" style="left: 124px; top: 500px; font-size: 54px; color: var(--muted)"></div>
+      <div id="a-bottom" class="abs head" style="left: 120px; top: 620px; font-size: 104px"><span class="line"><span>再找时，只剩<span class="em">这串字</span>。</span></span></div>
+
+      <!-- 2. the vault -->
+      <div id="wall-view" class="layer"><div id="wall"></div></div>
+      <div id="b-label" class="layer" style="left: 124px; top: 250px; font-size: 26px; font-weight: 500; color: var(--primary)">Obsidian 式 Vault</div>
+      <div id="b-head" class="abs head" style="left: 120px; top: 300px; font-size: 104px">
+        <span class="line"><span>一个文件夹。</span></span>
+        <span class="line"><span>就是素材库。</span></span>
+      </div>
+      <div id="tree" class="layer mono" style="left: 124px; top: 570px"></div>
+      <div id="b-pops" class="abs" style="left: 120px; top: 830px; font-size: 44px; font-weight: 600; letter-spacing: -0.02em; display: flex; gap: 28px">
+        <span class="layer" style="position: relative">不导入。</span>
+        <span class="layer" style="position: relative">不复制。</span>
+        <span class="layer" style="position: relative">不锁定。</span>
+      </div>
+
+      <!-- 3. the model -->
+      <div id="c-title" class="abs head" style="left: 116px; top: 330px; font-size: 168px; letter-spacing: -0.05em; white-space: nowrap"></div>
+      <div id="c-sub" class="abs" style="left: 124px; top: 560px; font-size: 38px; color: var(--muted)"><span class="line"><span>看得懂画面。就在你的 Mac 上。</span></span></div>
+      <div id="thumbs" class="abs" style="inset: 0"></div>
+      <svg id="links" class="abs" width="1920" height="1080" style="left: 0; top: 0; overflow: visible; z-index: 2">
+        <circle id="ring" fill="none" stroke="var(--primary)" stroke-width="2" r="0" />
+        <circle id="dot" fill="var(--primary)" r="0" />
+      </svg>
+      <div id="scores" class="abs" style="inset: 0"></div>
+      <div id="search" class="layer"><span id="query"></span><span style="font-size: 18px; color: var(--subtle)">按画面</span></div>
+      <div id="c-map" class="layer mono" style="right: 64px; bottom: 52px; font-size: 18px; color: var(--subtle)"></div>
+      <div id="c-cap1" class="abs head" style="left: 120px; top: 880px; font-size: 80px"><span class="line"><span>忘了名字。</span></span></div>
+      <div id="c-cap2" class="abs head" style="left: 120px; top: 880px; font-size: 80px"><span class="line"><span>记得<span class="em">样子</span>，就够了。</span></span></div>
+
+      <!-- 4. the Markdown -->
+      <div id="d-label" class="layer" style="left: 124px; top: 300px; font-size: 26px; font-weight: 500; color: var(--primary)">纯 Markdown</div>
+      <div id="d-head1" class="abs head" style="left: 120px; top: 350px; font-size: 92px">
+        <span class="line"><span>标签与备注。</span></span>
+        <span class="line"><span>一份纯文本。</span></span>
+      </div>
+      <div id="d-head2" class="abs head" style="left: 120px; top: 350px; font-size: 92px">
+        <span class="line"><span>文件在哪，</span></span>
+        <span class="line"><span>标注就在哪。</span></span>
+      </div>
+      <div id="d-sub" class="layer" style="left: 124px; top: 600px; font-size: 32px; line-height: 1.6; color: var(--muted)">可编辑。可 diff。可进 Git。</div>
+      <div id="d-path" class="layer mono" style="left: 1040px; top: 168px; font-size: 19px; color: var(--muted); white-space: pre"></div>
+
+      <!-- 5. the icon -->
+      <div id="icon-plate" class="layer"></div>
+      <div id="hero-wrap">
+        <div id="hero">
+          <div class="face"><img id="hero-img" alt="" /><div id="hero-gray"></div></div>
+          <div id="hero-back" class="face mono"></div>
+        </div>
+      </div>
+      <svg id="accent" class="layer" viewBox="0 0 1024 1024" style="left: 0; top: 0; overflow: visible">
+        <polygon points="462.5,404.9 524.5,404.9 652.5,255.1 568.5,255.1" fill="#30bf71" stroke="#30bf71" stroke-width="14" stroke-linejoin="round" />
+      </svg>
+      <div id="e-word" class="layer" style="left: 890px; top: 432px; font-size: 150px; font-weight: 600; letter-spacing: -0.045em; line-height: 1">Déjà</div>
+      <div id="e-line" class="layer" style="left: 896px; top: 614px; font-size: 36px; letter-spacing: -0.01em">见过，就找得到。</div>
+      <div id="e-meta" class="layer" style="left: 896px; top: 676px; font-size: 19px; color: var(--subtle)">macOS · 完全本地 · embeddinggemma-2</div>
+
+      <div id="mark" class="layer" style="left: 64px; top: 44px; font-size: 18px; font-weight: 500; color: var(--muted)">Déjà</div>
+      <div id="wipe"></div>
+    </div>
+
+    <script>
+      const DURATION = 32.5;
+      const $ = (id) => document.getElementById(id);
+      const VAULT = window.VAULT;
+      if (!VAULT) throw new Error("promo/.vault/manifest.js is missing. run node scripts/make-mg-assets.mjs");
+      const ITEMS = VAULT.items;
+      const SRC = (item) => `.vault/${item.file}`;
+      const byName = (name) => ITEMS.find((item) => item.name === name);
+
+      // ---------- time ----------
+
+      function bezier(x1, y1, x2, y2) {
+        const at = (p, a, b) => 3 * a * (1 - p) * (1 - p) * p + 3 * b * (1 - p) * p * p + p * p * p;
+        return (x) => {
+          if (x <= 0) return 0;
+          if (x >= 1) return 1;
+          let low = 0;
+          let high = 1;
+          for (let i = 0; i < 18; i += 1) {
+            const mid = (low + high) / 2;
+            if (at(mid, x1, x2) < x) low = mid;
+            else high = mid;
+          }
+          return at((low + high) / 2, y1, y2);
+        };
+      }
+      const out = bezier(0.2, 0, 0, 1);
+      const inOut = bezier(0.6, 0, 0.15, 1);
+      /** Fast start, long settle: the move that lands on a beat. */
+      const snap = bezier(0.75, 0, 0.05, 1);
+      const linear = (x) => x;
+      const span = (t, start, seconds, ease = out) => ease(Math.min(1, Math.max(0, (t - start) / seconds)));
+      const mix = (a, b, k) => a + (b - a) * k;
+      const mixRect = (a, b, k) => ({ x: mix(a.x, b.x, k), y: mix(a.y, b.y, k), w: mix(a.w, b.w, k), h: mix(a.h, b.h, k) });
+      const within = (t, a, b) => t >= a && t < b;
+      const noise = (i, j) => {
+        const x = Math.sin(i * 12.9898 + j * 78.233) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      function show(element, opacity, x = 0, y = 0, scale = 1) {
+        element.style.opacity = String(opacity);
+        element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      }
+      function beat(element, t, start, end, lift = 16) {
+        const k = span(t, start, 0.6);
+        const gone = span(t, end, 0.35);
+        show(element, k * (1 - gone), 0, lift * (1 - k) - 12 * gone);
+      }
+      /** Each line rises out of its slot at `start`, a beat apart, and leaves upward at `end`. */
+      function rise(block, t, start, end, stagger = 0.12, exitStagger = 0.05) {
+        block.querySelectorAll(".line > span").forEach((inner, i) => {
+          const k = span(t, start + i * stagger, 0.7, snap);
+          const gone = span(t, end + i * exitStagger, 0.45, inOut);
+          inner.style.transform = `translateY(${(1 - k) * 110 - gone * 110}%)`;
+        });
+      }
+      function place(element, rect) {
+        element.style.left = `${rect.x}px`;
+        element.style.top = `${rect.y}px`;
+        element.style.width = `${rect.w}px`;
+        element.style.height = `${rect.h}px`;
+      }
+      function typed(text, t, start, perChar) {
+        if (t < start) return "";
+        return text.slice(0, Math.min(text.length, Math.floor((t - start) / perChar) + 1));
+      }
+
+      // ---------- the cast ----------
+
+      const HERO = byName("4b292ce5f307f76af46e99cbd97702de.jpg");
+      const CAR = byName("高清锐化赛车图.png");
+      const [FLOWERS, RAIN] = [0, 1];
+      const top5 = [...ITEMS].sort((a, b) => b.cosine[FLOWERS] - a.cosine[FLOWERS]).slice(0, 5);
+
+      // 1. Pictures whose names say nothing, cut faster and faster, landing on the hero.
+      const FLASH = [
+        "4fefb9d6a9150d9269e39e6f396990cb.jpg",
+        "PnlgLF3wsQ-aj6_EVu23W_3nk7XXCb.png",
+        "c5acc86db6bebd26dd812116ed4ece2f.jpg",
+        "qmBVoCNly9_UjrAESCywH_HbOoKn0w.png",
+        "695862a23c7d33763d75083a3dd4c628 2.jpg",
+        "06c499377b38cd7061c7bff4867c3943.jpg",
+        "output (1).png",
+        "ef4e254fc82a1b3b436a3d4a19d1da44.jpg",
+        "1af0b9b1cba7168bd537f13ca18c26e0 2.jpg",
+        "image.png",
+        "d5ea22494dbd55b473bfcb247296e586.jpg",
+        HERO.name,
+      ].map(byName);
+      const FLASH_HOLD = [0.3, 0.26, 0.22, 0.19, 0.16, 0.14, 0.12, 0.11, 0.1, 0.1, 0.1];
+      const flashStarts = FLASH_HOLD.reduce((starts, hold) => [...starts, starts.at(-1) + hold], [0]);
+      const CUT_TO_TEXT = 2.55;
+      for (const item of FLASH) $("flash").insertAdjacentHTML("beforeend", `<img src="${SRC(item)}" alt="" />`);
+      const flashImages = [...$("flash").children];
+
+      // 2. The wall: seven columns of the vault, drifting against each other.
+      const wallColumns = Array.from({ length: 7 }, (_, c) => {
+        const picks = Array.from({ length: 8 }, (_, k) => ITEMS[(c * 5 + k * 3) % ITEMS.length]);
+        const height = picks.reduce((sum, item) => sum + (300 * item.h) / item.w + 20, 0);
+        const column = document.createElement("div");
+        column.className = "col";
+        column.style.left = `${c * 320}px`;
+        column.innerHTML = [...picks, ...picks].map((item) => `<img src="${SRC(item)}" style="height:${(300 * item.h) / item.w}px" alt="" />`).join("");
+        $("wall").appendChild(column);
+        return { column, height, speed: (c % 2 ? -1 : 1) * (46 + 14 * noise(c, 1)), phase: noise(c, 2) * height };
+      });
+      const folderCount = (folder) => ITEMS.filter((item) => item.folder === folder).length;
+      const TREE = [
+        `<span class="dir">Deja Vault/</span>`,
+        `├── <span class="dir">generated/</span>   ${folderCount("generated")} 张`,
+        `├── <span class="dir">pinterest/</span>   ${folderCount("pinterest")} 张`,
+        `├── <span class="dir">website/</span>      ${folderCount("website")} 张`,
+        `└── <span class="dir">.deja/meta/</span>  每张图一份 <span class="em">.md</span>`,
+      ];
+
+      // 3. The map: where embeddinggemma-2 puts each picture, flattened to two axes.
+      const MAP = { x: 300, y: 230, w: 1320, h: 600 };
+      const THUMB_H = 96;
+      const thumbs = ITEMS.map((item, i) => {
+        const element = document.createElement("div");
+        element.className = "thumb";
+        element.innerHTML = `<img src="${SRC(item)}" alt="" />`;
+        $("thumbs").appendChild(element);
+        const w = (THUMB_H * item.w) / item.h;
+        const home = { x: MAP.x + item.at[0] * MAP.w - w / 2, y: MAP.y + item.at[1] * MAP.h - THUMB_H / 2, w, h: THUMB_H };
+        return { item, element, home, i, rect: home };
+      });
+      const thumbOf = (item) => thumbs[ITEMS.indexOf(item)];
+      const center = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+      const grow = (r, k) => ({ x: r.x - (r.w * (k - 1)) / 2, y: r.y - (r.h * (k - 1)) / 2, w: r.w * k, h: r.h * k });
+      // The query's dot sits among what it found; the lines are the real scores.
+      const queryAt = top5.map((item) => center(thumbOf(item).home)).reduce((a, p) => ({ x: a.x + p.x / 5, y: a.y + p.y / 5 }), { x: 0, y: 0 });
+
+      const ROW_H = 320;
+      const rowWidths = top5.map((item) => (ROW_H * item.w) / item.h);
+      const rowSpan = rowWidths.reduce((a, b) => a + b, 0) + 24 * 4;
+      const rowRects = rowWidths.map((w, i) => ({ x: 960 - rowSpan / 2 + rowWidths.slice(0, i).reduce((a, b) => a + b + 24, 0), y: 300, w, h: ROW_H }));
+
+      const CAR_BIG = { w: (560 * CAR.w) / CAR.h, h: 560 };
+      Object.assign(CAR_BIG, { x: 960 - CAR_BIG.w / 2, y: 250 });
+
+      const newChip = () => {
+        const chip = document.createElement("div");
+        chip.className = "score mono";
+        $("scores").appendChild(chip);
+        return chip;
+      };
+      const scoreChips = top5.map(newChip);
+      const carChip = newChip();
+      const links = top5.map(() => {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        $("links").insertBefore(line, $("ring"));
+        return line;
+      });
+
+      $("c-title").innerHTML = [...VAULT.model.split("/").pop()].map((ch) => `<span class="line" style="display:inline-block"><span>${ch}</span></span>`).join("");
+      $("c-map").textContent = `${ITEMS.length} 张图，在模型眼中的位置`;
+
+      // 4. The card and its back.
+      const CARD = { x: 1040, y: 210, w: 760, h: 660 };
+      $("hero-img").src = SRC(HERO);
+      const FRONTMATTER = [
+        `<span class="fence">---</span>`,
+        `<span class="key">tags</span>: [红色, 花, 玻璃]`,
+        `<span class="key">rating</span>: 5`,
+        `<span class="key">source</span>: ${HERO.source.replace("https://", "").slice(0, 40)}…`,
+        `<span class="fence">---</span>`,
+        ``,
+        `<span class="body">红色调参考，下张海报用。</span>`,
+      ];
+      const MOVE_AT = 23.5;
+
+      // ---------- the timeline ----------
+
+      function renderFlash(t) {
+        const index = t >= CUT_TO_TEXT ? -1 : Math.max(0, flashStarts.findLastIndex((start) => t >= start));
+        flashImages.forEach((image, i) => {
+          image.style.display = i === index ? "block" : "none";
+          if (i !== index) return;
+          const last = i === FLASH.length - 1;
+          const scale = last ? 1 + 0.06 * span(t, flashStarts[i], 0.8, linear) : 1.06 - 0.06 * span(t, flashStarts[i], FLASH_HOLD[i], out);
+          image.style.transform = `scale(${scale})`;
+        });
+        const chip = $("chip");
+        chip.style.opacity = index >= 0 ? "1" : "0";
+        if (index >= 0) chip.textContent = FLASH[index].rel;
+        chip.style.color = index === FLASH.length - 1 ? "#30bf71" : "#fff";
+
+        // The name, decoded out of noise one character at a time.
+        const hash = HERO.name;
+        const settle = (i) => CUT_TO_TEXT + 0.05 + (i / hash.length) * 0.75;
+        const frame = Math.floor(t * 30);
+        $("a-hash").textContent = [...hash].map((ch, i) => (t >= settle(i) || !/[0-9a-f]/.test(ch) ? ch : "0123456789abcdef"[Math.floor(noise(i, frame) * 16)])).join("");
+        show($("a-hash"), within(t, CUT_TO_TEXT, 4.55) ? 1 : 0);
+        $("a-hash").style.color = t >= settle(hash.length - 1) + 0.1 ? "var(--foreground)" : "var(--muted)";
+        rise($("a-top"), t, CUT_TO_TEXT + 0.1, 4.15);
+        rise($("a-bottom"), t, CUT_TO_TEXT + 0.75, 4.15);
+      }
+
+      function renderVault(t) {
+        const on = within(t, 4.55, 10.86);
+        const enter = span(t, 4.55, 1.4, out);
+        $("wall-view").style.opacity = on ? "1" : "0";
+        $("wall").style.transform = `rotateX(${mix(44, 30, enter)}deg) rotateZ(${mix(-26, -16, enter)}deg) scale(${mix(1.25, 1, enter)})`;
+        if (on) {
+          for (const { column, height, speed, phase } of wallColumns) {
+            const offset = (((phase + speed * t) % height) + height) % height;
+            column.style.transform = `translateY(${-offset}px)`;
+          }
+        }
+        beat($("b-label"), t, 4.9, 10.4, 10);
+        rise($("b-head"), t, 5.0, 10.35, 0.14);
+        const lines = Math.max(0, Math.min(TREE.length, Math.floor((t - 6.3) / 0.16) + 1));
+        $("tree").innerHTML = TREE.slice(0, lines).join("\n");
+        beat($("tree"), t, 6.3, 10.4, 0);
+        [...$("b-pops").children].forEach((pop, i) => {
+          const k = span(t, 8.4 + i * 0.38, 0.45, snap);
+          show(pop, k * (1 - span(t, 10.35, 0.3)), 0, 24 * (1 - k), 1 + 0.18 * (1 - k));
+        });
+        show($("mark"), span(t, 4.9, 0.5) * (1 - span(t, 25.9, 0.4)));
+      }
+
+      function thumbState(thumb, t) {
+        const { item, home, i } = thumb;
+        // 5. Back from beyond the edge, into the card as it becomes the icon.
+        if (t >= 25.9) {
+          const angle = (i / ITEMS.length) * Math.PI * 2;
+          const ring = { x: 960 + Math.cos(angle) * 1300 - 90, y: 540 + Math.sin(angle) * 900 - 60, w: 180, h: 120 };
+          const k = span(t, 25.9 + noise(i, 6) * 0.35, 0.8, snap);
+          return { rect: mixRect(ring, { x: 950, y: 533, w: 20, h: 14 }, k), opacity: k > 0 && k < 1 ? 1 : 0 };
+        }
+
+        // Fly in from the right edge, the right-hand pictures first.
+        const enter = span(t, 12.3 + (1 - item.at[0]) * 0.7 + noise(i, 3) * 0.15, 0.9, snap);
+        const from = { x: 1980 + noise(i, 4) * 400, y: home.y + (noise(i, 5) - 0.5) * 500, w: home.w * 1.6, h: home.h * 1.6 };
+        let rect = mixRect(from, home, enter);
+        let opacity = enter > 0 ? 1 : 0;
+
+        // 「雨夜的赛车」: one picture comes forward.
+        if (item === CAR) rect = mixRect(rect, CAR_BIG, span(t, 14.6, 0.55, snap) * (1 - span(t, 15.75, 0.45, inOut)));
+        else opacity *= 1 - 0.82 * span(t, 14.6, 0.3) * (1 - span(t, 15.75, 0.3));
+
+        // 「红色的花」: five light up, then line up by score.
+        const rank = top5.indexOf(item);
+        const lit = span(t, 16.75, 0.5, snap);
+        if (rank >= 0) {
+          rect = grow(rect, 1 + 0.55 * lit);
+          rect = mixRect(rect, rowRects[rank], span(t, 17.75 + rank * 0.07, 0.8, snap));
+          if (item !== HERO) opacity *= 1 - span(t, 19.35, 0.35);
+        } else {
+          opacity *= (1 - 0.8 * lit) * (1 - span(t, 17.7, 0.4));
+        }
+        return { rect, opacity };
+      }
+
+      function renderModel(t) {
+        rise($("c-title"), t, 11.05, 12.2, 0.03, 0.01);
+        rise($("c-sub"), t, 11.6, 12.4);
+
+        const mapOn = within(t, 12.2, 19.9) || within(t, 25.9, 27.2);
+        for (const thumb of thumbs) {
+          const { rect, opacity } = thumbState(thumb, t);
+          thumb.rect = rect;
+          const hide = !mapOn || opacity <= 0.003 || (thumb.item === HERO && t >= 19.4 && t < 25.9);
+          thumb.element.style.display = hide ? "none" : "block";
+          if (hide) continue;
+          place(thumb.element, rect);
+          thumb.element.style.opacity = String(opacity);
+          thumb.element.style.borderRadius = `${Math.max(6, Math.min(16, rect.h * 0.05))}px`;
+          thumb.element.style.zIndex = top5.includes(thumb.item) || thumb.item === CAR ? "2" : "1";
+        }
+
+        beat($("search"), t, 13.4, 19.4, -12);
+        const [flowers, rain] = [VAULT.queries[FLOWERS], VAULT.queries[RAIN]];
+        let q = typed(rain, t, 13.7, 0.11);
+        if (t >= 15.8) q = rain.slice(0, Math.max(0, rain.length - Math.floor((t - 15.8) / 0.05)));
+        if (t >= 16.1) q = typed(flowers, t, 16.1, 0.11);
+        $("query").innerHTML = `${q}<span class="caret" style="opacity:${Math.floor(t * 2.5) % 2 === 0 ? 1 : 0.2}"></span>`;
+        show($("c-map"), span(t, 13.0, 0.6) * (1 - span(t, 17.6, 0.3)));
+
+        const carK = span(t, 14.9, 0.4) * (1 - span(t, 15.7, 0.25));
+        carChip.style.display = carK > 0 ? "block" : "none";
+        if (carK > 0) {
+          const r = thumbOf(CAR).rect;
+          carChip.innerHTML = `<span class="em">${CAR.match[RAIN]}%</span>  ${CAR.rel}`;
+          carChip.style.fontSize = "24px";
+          carChip.style.left = `${r.x}px`;
+          carChip.style.top = `${r.y + r.h + 14}px`;
+          carChip.style.opacity = String(carK);
+        }
+
+        // A point, a pulse, five lines out to what it found.
+        const lit = span(t, 16.75, 0.5, snap) * (1 - span(t, 17.7, 0.3));
+        const pulse = span(t, 16.75, 0.9, out);
+        for (const id of ["dot", "ring"]) {
+          $(id).setAttribute("cx", queryAt.x);
+          $(id).setAttribute("cy", queryAt.y);
+        }
+        $("dot").setAttribute("r", 9 * lit);
+        $("ring").setAttribute("r", 20 + 380 * pulse);
+        $("ring").style.opacity = String(lit * (1 - pulse));
+        top5.forEach((item, rank) => {
+          const r = thumbOf(item).rect;
+          const c = center(r);
+          const k = span(t, 16.85 + rank * 0.06, 0.4, out);
+          const line = links[rank];
+          line.setAttribute("x1", queryAt.x);
+          line.setAttribute("y1", queryAt.y);
+          line.setAttribute("x2", mix(queryAt.x, c.x, k));
+          line.setAttribute("y2", mix(queryAt.y, c.y, k));
+          line.style.opacity = String(lit);
+
+          const chip = scoreChips[rank];
+          const chipK = span(t, 17.0 + rank * 0.06, 0.4) * (1 - span(t, 19.3, 0.3));
+          chip.style.display = chipK > 0 ? "block" : "none";
+          if (chipK <= 0) return;
+          const row = span(t, 17.75 + rank * 0.07, 0.8, snap);
+          chip.textContent = `${item.match[FLOWERS]}%`;
+          chip.style.fontSize = `${mix(16, 26, row)}px`;
+          chip.style.color = rank === 0 ? "#30bf71" : "#fff";
+          chip.style.left = `${r.x}px`;
+          chip.style.top = `${r.y + r.h + mix(6, 16, row)}px`;
+          chip.style.opacity = String(chipK);
+        });
+
+        rise($("c-cap1"), t, 14.75, 16.0);
+        rise($("c-cap2"), t, 17.9, 19.3);
+      }
+
+      /** The icon's center and scale as it moves into the lockup. */
+      const lockupAt = (k) => ({ cx: mix(960, 700, k), k: mix(1, 0.72, k) });
+      const iconBox = (cx, cy, size) => ({ x: cx - size / 2, y: cy - size / 2, s: size / 1024 });
+      const innerOf = (box) => ({ x: box.x + 272 * box.s, y: box.y + 448.9 * box.s, w: 480 * box.s, h: 320 * box.s });
+
+      function renderCard(t) {
+        const el = $("hero");
+        if (t < 19.4) {
+          el.style.display = "none";
+          return;
+        }
+        el.style.display = "block";
+        const lift = span(t, 19.4, 0.9, snap);
+        const fold = span(t, 26.2, 1.0, inOut);
+        let box = mixRect(rowRects[0], CARD, lift);
+        box = mixRect(box, innerOf(iconBox(960, 540, 460)), fold);
+        const lockup = lockupAt(span(t, 28.6, 1.0, inOut));
+        const cx = lockup.cx + (box.x + box.w / 2 - 960) * lockup.k;
+        const cy = 540 + (box.y + box.h / 2 - 540) * lockup.k;
+        box = { x: cx - (box.w * lockup.k) / 2, y: cy - (box.h * lockup.k) / 2, w: box.w * lockup.k, h: box.h * lockup.k };
+        place(el, box);
+        el.style.borderRadius = `${mix(mix(16, 22, lift), 56 * (460 / 1024) * lockup.k, fold)}px`;
+
+        const flip = 180 * span(t, 20.4, 0.9, inOut) + 180 * span(t, 25.1, 0.8, inOut);
+        el.style.transform = `rotateY(${flip}deg)`;
+        const shown = Math.max(0, Math.floor((t - 21.2) / 0.14) + 1);
+        $("hero-back").innerHTML = FRONTMATTER.slice(0, Math.min(FRONTMATTER.length, shown)).join("\n");
+        $("hero-gray").style.opacity = String(span(t, 26.7, 0.6));
+
+        // The Markdown's path: the folder is erased and retyped, the name stays.
+        const folder = HERO.folder;
+        const erased = Math.min(folder.length, Math.floor(Math.max(0, t - MOVE_AT) / 0.05));
+        const where = erased < folder.length ? folder.slice(0, folder.length - erased) : `<span class="em">${typed("精选", t, MOVE_AT + folder.length * 0.05, 0.12)}</span>`;
+        $("d-path").innerHTML = `.deja/meta/${where}/${HERO.name}.md`;
+        beat($("d-path"), t, 21.0, 25.8, 8);
+
+        beat($("d-label"), t, 20.0, 23.3, 10);
+        rise($("d-head1"), t, 20.1, 23.2);
+        rise($("d-head2"), t, MOVE_AT + 0.05, 25.8);
+        beat($("d-sub"), t, 21.0, 25.8);
+      }
+
+      function renderIcon(t) {
+        const lockup = lockupAt(span(t, 28.6, 1.0, inOut));
+        const box = iconBox(lockup.cx, 540, 460 * lockup.k);
+        const plate = $("icon-plate");
+        const appear = span(t, 26.9, 0.7, snap);
+        place(plate, { x: box.x + 100 * box.s, y: box.y + 100 * box.s, w: 824 * box.s, h: 824 * box.s });
+        plate.style.borderRadius = `${185 * box.s}px`;
+        show(plate, appear, 0, 0, 0.8 + 0.2 * appear);
+
+        // The accent drops onto the picture the way it sits on the é.
+        const accent = $("accent");
+        place(accent, { x: box.x, y: box.y, w: 1024 * box.s, h: 1024 * box.s });
+        show(accent, span(t, 27.45, 0.1), 0, -260 * box.s * (1 - span(t, 27.45, 0.45, snap)));
+
+        show($("e-word"), span(t, 29.0, 0.7), 22 * (1 - span(t, 29.0, 0.9)));
+        show($("e-line"), span(t, 29.5, 0.7), 0, 12 * (1 - span(t, 29.5, 0.8)));
+        show($("e-meta"), span(t, 30.0, 0.7));
+      }
+
+      /** Flat emerald wipes that cover the two scene cuts. */
+      function renderWipe(t) {
+        const start = t < 7 ? 4.3 : 10.62;
+        const cover = span(t, start, 0.24, inOut);
+        const uncover = span(t, start + 0.26, 0.28, inOut);
+        $("wipe").style.clipPath = `inset(0 ${(1 - cover) * 100}% 0 ${uncover * 100}%)`;
+      }
+
+      function render(t) {
+        renderFlash(t);
+        renderVault(t);
+        renderModel(t);
+        renderCard(t);
+        renderIcon(t);
+        renderWipe(t);
+      }
+
+      // ---------- the two ways to play ----------
+
+      let driven = false;
+      window.__duration = DURATION;
+      window.__render = (t) => {
+        if (!driven) {
+          driven = true;
+          document.documentElement.classList.remove("preview");
+          $("stage").style.transform = "";
+        }
+        render(t);
+      };
+      function fit() {
+        const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+        $("stage").style.transform = `translate(${(innerWidth - 1920 * k) / 2}px, ${(innerHeight - 1080 * k) / 2}px) scale(${k})`;
+      }
+      Promise.all([document.fonts.load("54px 'JetBrains Mono'"), document.fonts.load("600 104px 'Inter Variable'"), document.fonts.ready]).then(() => {
+        window.__fontsReady = true;
+        if (driven) return;
+        document.documentElement.classList.add("preview");
+        fit();
+        addEventListener("resize", fit);
+        let origin = performance.now();
+        addEventListener("click", () => (origin = performance.now()));
+        const loop = (now) => {
+          if (driven) return;
+          render(((now - origin) / 1000) % DURATION);
+          requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+      });
+      render(0);
+    </script>
+  </body>
+</html>

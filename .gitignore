@@ -35,3 +35,6 @@ demo/
 .env.*
 
 .claude/worktrees
+# promo/mg.html pictures, built from a local vault by scripts/make-mg-assets.mjs
+promo/.vault/
+docs/*.part.mp4
