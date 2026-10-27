@@ -6,9 +6,9 @@ Déjà 是一个 macOS 桌面应用。它不导入、不接管、不复制你的
 
 ![](docs/screenshots/02-wall.jpg)
 
-[![宣传动画](docs/promo.gif)](docs/promo.mp4)
+[![宣传片](docs/mg.gif)](docs/mg.mp4)
 
-28 秒宣传动画，1080p，[docs/promo.mp4](docs/promo.mp4)。上面循环的是「三个栏位」那一段。片子和下面所有截图都由脚本生成，可以重跑，见脚本表。
+32 秒宣传片，1080p，带配乐，[docs/mg.mp4](docs/mg.mp4)。上面循环的是搜索那一段。片子里的匹配度和向量分布都是本机 embeddinggemma-2 真算出来的，配乐也由脚本合成。早先那条 28 秒的截图版还在 [docs/promo.mp4](docs/promo.mp4)。片子和下面所有截图都由脚本生成，可以重跑，见脚本表。
 
 ## 它解决什么
 
@@ -144,7 +144,9 @@ uv pip install --python .venv/bin/python -r requirements.txt
 | `npm run demo` | 从 `DEJA_DEMO_SOURCE` 生成演示素材库 `demo/素材库` |
 | `npm run shots` | 在演示库上截 README 用的图，写到 `.shots/` |
 | `npm run readme` | 把 `.shots/` 的截图压成 `docs/screenshots/*.jpg` |
-| `npm run promo` | 逐帧渲染宣传动画，输出 `docs/promo.mp4` |
+| `npm run promo` | 逐帧渲染截图版宣传动画，输出 `docs/promo.mp4` |
+| `node scripts/make-mg-assets.mjs` | 从 `DEJA_VAULT`（默认 `~/Documents/Deja Vault`）取图，用本机模型算匹配度和二维分布，写到 `promo/.vault/` |
+| `npm run mg` | 合成配乐，逐帧渲染宣传片，输出 `docs/mg.mp4` 和 `docs/mg.gif` |
 | `npm run media` | 上面三步一起跑 |
 
 ## 测试
@@ -155,7 +157,7 @@ uv pip install --python .venv/bin/python -r requirements.txt
 - **Rust 测试**（`npm run test:rust`）覆盖元数据读写、索引范围、导入、检索排序、向量库、模型客户端。
 - **端到端**（`npm run e2e`）用 Playwright 打开真实页面，后面是真 Rust 后端（`src-tauri/src/bin/e2e_server.rs` 把同一份 dispatch 暴露成 HTTP），所以测的是应用，不是替身。素材来自 `npm run fixtures` 生成的 12 张图，拖放、相似、预览、范围、设置都有用例。
 
-截图和宣传动画不是手截的。`e2e/shots.spec.ts` 打开演示库、等索引完成、走到各个状态再截图；`promo/promo.html` 是一条时间线，页面里的 `window.__render(t)` 是 t 的纯函数，`scripts/make-promo.mjs` 逐帧求值后把 PNG 直接送进 ffmpeg。同一份输入，任何时候重跑都是同一段片子。
+截图和宣传动画不是手截的。`e2e/shots.spec.ts` 打开演示库、等索引完成、走到各个状态再截图；`promo/promo.html` 是一条时间线，页面里的 `window.__render(t)` 是 t 的纯函数，`scripts/make-promo.mjs` 逐帧求值后把 PNG 直接送进 ffmpeg。同一份输入，任何时候重跑都是同一段片子。`promo/mg.html` 同理，它的图和分数来自 `promo/.vault/`，这个目录取自本地素材库，不进仓库，所以重跑宣传片需要先在自己的库上跑一遍 `make-mg-assets.mjs`。
 
 ## 目录
 
@@ -167,7 +169,7 @@ src-tauri/src/    后端。scan 扫描、thumb 缩略图、color 主色、meta M
 sidecar/          Python 嵌入服务，一个进程一个模型，串行推理
 e2e/              Playwright 用例；shots.spec.ts 产图
 scripts/          素材库、截图、宣传动画的生成脚本
-promo/            宣传动画的时间线页面
+promo/            宣传动画的时间线页面；mg.html 是带配乐的宣传片
 docs/             README 的截图和宣传动画
 design/           globals.css、图标
 DESIGN.md         设计语言：颜色、字阶、间距、组件差异、动效规则
