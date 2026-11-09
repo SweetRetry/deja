@@ -13,11 +13,13 @@ pub struct Settings {
   pub semantic: bool,
   /// Seconds the model stays loaded with nothing to do; 0 keeps it loaded.
   pub model_idle_secs: u64,
+  /// On: the MCP server listens on loopback while the app runs.
+  pub mcp: bool,
 }
 
 impl Default for Settings {
   fn default() -> Self {
-    Settings { semantic: true, model_idle_secs: 300 }
+    Settings { semantic: true, model_idle_secs: 300, mcp: false }
   }
 }
 
@@ -59,7 +61,7 @@ mod tests {
   #[test]
   fn an_old_file_with_ignored_folders_still_loads() {
     let parsed: Settings = serde_json::from_str(r#"{"semantic":false,"modelIdleSecs":60,"ignored":["x"]}"#).unwrap();
-    assert_eq!(parsed, Settings { semantic: false, model_idle_secs: 60 });
+    assert_eq!(parsed, Settings { semantic: false, model_idle_secs: 60, mcp: false });
   }
 
   #[test]

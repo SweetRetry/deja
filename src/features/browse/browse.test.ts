@@ -3,7 +3,7 @@ import test from "node:test";
 import { initialSession, reduce, type Session } from "../../app/session.ts";
 import { emptyFilter, type Entry, type SearchResponse } from "../../lib/types.ts";
 import type { SessionEvent } from "../vault/events.ts";
-import { extraCopies } from "./browse.ts";
+import { extraCopies, shownPaths } from "./browse.ts";
 
 const run = (events: SessionEvent[], start: Session = initialSession()): Session =>
   events.reduce((session, event) => reduce(session, event), start);
@@ -160,10 +160,14 @@ test("deleting a file the similar view lists takes it out of that view too", () 
   assert.equal(removed.browse.selected, "p/c.jpg");
 });
 
-test("the viewer closes on the file it was showing", () => {
+test("deleting the file the viewer shows steps on to the next, and closes it on the last", () => {
   const viewing = reduce(open, { type: "VIEWER", open: true });
   assert.equal(reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: ["b.jpg"] }).browse.viewing, true, "another file is open");
-  assert.equal(reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: ["a.jpg"] }).browse.viewing, false);
+  const stepped = reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: ["a.jpg"] });
+  assert.equal(stepped.browse.viewing, true);
+  assert.equal(stepped.browse.selected, "b.jpg");
+  const all = shownPaths(viewing.browse) ?? [];
+  assert.equal(reduce(viewing, { type: "ENTRIES_REMOVED", relPaths: all }).browse.viewing, false);
 });
 
 test("an answer from the previous folder cannot land in the next one", () => {

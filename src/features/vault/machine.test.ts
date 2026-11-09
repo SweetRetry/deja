@@ -109,7 +109,7 @@ test("model ready re-arms the search in any phase, including paused", () => {
 });
 
 test("close clears the folder but keeps a warm model and the settings", () => {
-  const settings = { semantic: true, modelIdleSecs: 60 };
+  const settings = { semantic: true, modelIdleSecs: 60, mcp: false };
   const closed = run([{ type: "SETTINGS", settings }, { type: "MODEL_READY" }, { type: "CLOSE" }], ready);
   assert.equal(closed.phase, "idle");
   assert.equal(closed.library, null);

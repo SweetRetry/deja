@@ -65,6 +65,10 @@ export const api = {
   similar: (relPath: string, limit = 24) => call<SimilarResponse>("similar", { relPath, limit }),
   entry: (relPath: string) => call<Entry>("entry", { relPath }),
   reveal: (relPath: string) => call<{ revealed: boolean }>("reveal", { relPath }),
+  /** `path` puts the absolute paths on the clipboard, `file` the files as Finder's ⌘C does. */
+  copy: (relPaths: string[], as: "path" | "file") => call<{ copied: number }>("copy_entries", { relPaths, as }),
+  copyText: (text: string) => call<{ copied: boolean }>("copy_text", { text }),
+  mcpStatus: () => call<{ running: boolean; url: string }>("mcp_status"),
   /** One request for every file; `trashed` lists the ones that left the vault. */
   trash: (relPaths: string[]) =>
     call<{ trashed: string[]; error: string | null; view: VaultView }>("trash_entries", { relPaths }),

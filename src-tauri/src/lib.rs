@@ -2,7 +2,9 @@ pub mod clipboard;
 pub mod color;
 pub mod dupes;
 pub mod files;
+pub mod http;
 pub mod import;
+pub mod mcp;
 pub mod meta;
 pub mod model;
 pub mod scan;
@@ -318,6 +320,11 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "similar" => search::similar(args),
     "entry" => entry(args),
     "reveal" => reveal(args),
+    "copy_entries" => copy_entries(args),
+    "copy_text" => {
+      clipboard::write_text(args.get("text").and_then(Value::as_str).ok_or("text is required")?)?;
+      Ok(json!({ "copied": true }))
+    }
     "trash_entries" => trash_entries(args),
     "move_entries" => move_entries(args),
     "create_folder" => create_folder(args),
@@ -332,6 +339,7 @@ pub fn dispatch(name: &str, args: &Value) -> Result<Value, String> {
     "take_dirty" => Ok(json!({ "dirty": DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) })),
     "warm_model" => warm_model(),
     "settings" => serde_json::to_value(settings::get()).map_err(|e| e.to_string()),
+    "mcp_status" => Ok(json!({ "running": mcp::running(), "url": mcp::url() })),
     "save_settings" => save_settings(args),
     "selfcheck_requested" => Ok(json!({
       "enabled": std::env::var("DEJA_SELFCHECK").is_ok(),
@@ -363,6 +371,13 @@ fn selfcheck_report(args: &Value) -> Result<Value, String> {
 /// picks up the embedding work semantic now owes.
 fn save_settings(args: &Value) -> Result<Value, String> {
   let (before, next) = settings::save(args)?;
+  if next.mcp != before.mcp {
+    if let Err(problem) = mcp::apply(next.mcp) {
+      // Turned back off on disk, so the next launch does not fail the same way.
+      settings::save(&json!({ "settings": settings::Settings { mcp: false, ..next } }))?;
+      return Err(problem);
+    }
+  }
   if !next.semantic || next.model_idle_secs != before.model_idle_secs {
     model::stop();
   }
@@ -611,6 +626,25 @@ fn reveal(args: &Value) -> Result<Value, String> {
   Ok(json!({ "revealed": true }))
 }
 
+/// Puts files the vault lists on the clipboard: their absolute paths one per
+/// line (`as: "path"`), or the files themselves (`as: "file"`).
+fn copy_entries(args: &Value) -> Result<Value, String> {
+  let rels = rel_paths(args)?;
+  let paths: Vec<PathBuf> = with_engine(|engine| {
+    listed(engine, &rels)?;
+    Ok(rels.iter().map(|rel| engine.root.join(rel)).collect())
+  })?;
+  match args.get("as").and_then(Value::as_str) {
+    Some("path") => {
+      let text: Vec<String> = paths.iter().map(|path| path.to_string_lossy().into_owned()).collect();
+      clipboard::write_text(&text.join("\n"))?
+    }
+    Some("file") => clipboard::write_files(&paths)?,
+    other => return Err(format!("cannot copy as {other:?}")),
+  }
+  Ok(json!({ "copied": paths.len() }))
+}
+
 fn rel_paths(args: &Value) -> Result<Vec<String>, String> {
   serde_json::from_value(args.get("relPaths").cloned().unwrap_or(json!([])))
     .map_err(|e| format!("relPaths are malformed: {e}"))
@@ -806,7 +840,13 @@ pub fn run_tauri() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![command])
-    .setup(|app| Ok(tray::install(app.handle())?))
+    .setup(|app| {
+      if settings::get().mcp {
+        // A taken port leaves the toggle on; the settings pane says so when reopened.
+        let _ = mcp::apply(true);
+      }
+      Ok(tray::install(app.handle())?)
+    })
     // Closing hides the window; the menu bar icon quits.
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {

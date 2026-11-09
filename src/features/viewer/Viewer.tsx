@@ -1,11 +1,14 @@
 import { useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { XIcon } from "@phosphor-icons/react";
+import { ClipboardTextIcon, FolderOpenIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, type Transition } from "motion/react";
 import { useRoot, useSelectedEntry, useWallEntries } from "@/app/selectors";
 import { useSession } from "@/app/store";
 import { Button } from "@/components/ui/button";
-import { closeViewer, select } from "@/features/browse/commands";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { closeViewer, copyEntries, revealEntry, select, trashEntries } from "@/features/browse/commands";
+import { FILE_KEYS, FileMenuItems } from "@/features/wall/TileMenu";
 import { fileUrl, thumbUrl } from "@/lib/bridge";
 import type { Entry } from "@/lib/types";
 import { Filmstrip } from "./Filmstrip";
@@ -49,6 +52,21 @@ function Picture({ entry, root, transition }: { entry: Entry; root: string; tran
       alt={entry.name}
       onLoad={() => setLoaded(true)}
     />
+  );
+}
+
+/** An icon button with its name, and its key when it has one, in a tooltip. */
+function Action({ label, keys, onClick, children }: { label: string; keys?: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} />}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>
+        {label}
+        {keys ? <span className="ml-2 text-muted-foreground">{keys}</span> : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -97,6 +115,8 @@ function ViewerContent() {
         hidden={false}
         // The popup takes focus, not the first button, so Space and the arrows act on the viewer.
         initialFocus={popup}
+        // Lets the file keys (⌘C, ⌘⌫) act here while other dialogs keep them away.
+        data-viewer=""
         render={<motion.div exit={{ opacity: 0 }} />}
         onKeyDown={onKeyDown}
         className="fixed inset-0 z-50 flex flex-col outline-none"
@@ -106,22 +126,40 @@ function ViewerContent() {
           animate={{ opacity: 1 }}
           onClick={closeOnSelf}
           // The title sits at the window's top centre rather than beside the
-          // traffic lights, so the header centres it and the close button is
-          // laid over the right edge instead of taking a slot in the row.
-          className="relative flex h-12 shrink-0 items-center justify-center px-24"
+          // traffic lights, so the header centres it and the buttons are laid
+          // over the right edge instead of taking slots in the row.
+          className="relative flex h-12 shrink-0 items-center justify-center px-44"
         >
           <Dialog.Title className="pointer-events-none truncate text-sm font-medium text-foreground">
             {entry.name}
           </Dialog.Title>
-          <Dialog.Close
-            render={<Button variant="ghost" size="icon-sm" aria-label="关闭预览" className="absolute right-2" />}
-          >
-            <XIcon aria-hidden />
-          </Dialog.Close>
+          <div className="absolute right-2 flex items-center gap-1">
+            <Action label="拷贝路径" keys={FILE_KEYS.copyPath} onClick={() => void copyEntries([entry.relPath], "path")}>
+              <ClipboardTextIcon aria-hidden />
+            </Action>
+            <Action label="在访达中显示" onClick={() => revealEntry(entry.relPath)}>
+              <FolderOpenIcon aria-hidden />
+            </Action>
+            <Action label="移到废纸篓" keys={FILE_KEYS.trash} onClick={() => void trashEntries([entry.relPath])}>
+              <TrashIcon aria-hidden />
+            </Action>
+            <Dialog.Close render={<Button variant="ghost" size="icon-sm" aria-label="关闭预览" />}>
+              <XIcon aria-hidden />
+            </Dialog.Close>
+          </div>
         </motion.header>
-        <div onClick={closeOnSelf} className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4 @container-size">
-          <Picture key={entry.relPath} entry={entry} root={root} transition={origin === null ? SWAP : GROW} />
-        </div>
+        {/* Right-click anywhere on the stage offers what the wall's tile menu does. */}
+        <ContextMenu>
+          <ContextMenuTrigger
+            onClick={closeOnSelf}
+            className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4 @container-size"
+          >
+            <Picture key={entry.relPath} entry={entry} root={root} transition={origin === null ? SWAP : GROW} />
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <FileMenuItems count={1} viewer />
+          </ContextMenuContent>
+        </ContextMenu>
         {index >= 0 && entries.length > 1 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="shrink-0 px-6 pb-4">
             {/* The strip is the only place position is shown, so the count sits

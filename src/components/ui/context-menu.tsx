@@ -83,7 +83,9 @@ function ContextMenuSeparator({ className, ...props }: ContextMenuPrimitive.Sepa
 
 function ContextMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
   return (
+    // The key is a reminder for the eye; the item's name stays the action alone.
     <span
+      aria-hidden
       data-slot="context-menu-shortcut"
       className={cn("ml-auto pl-4 text-xs text-muted-foreground", className)}
       {...props}

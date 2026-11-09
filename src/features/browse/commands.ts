@@ -4,7 +4,7 @@ import { api } from "@/lib/bridge";
 import { humanError } from "@/lib/errors";
 import { baseName, ellipsize } from "@/lib/utils";
 import type { Filter, Ranking, Sort } from "@/lib/types";
-import { shownPaths } from "./browse";
+import { chosen, shownPaths } from "./browse";
 import { clearNarrowing } from "./filter";
 
 export const setQuery = (query: string) => dispatch({ type: "QUERY", query });
@@ -124,6 +124,37 @@ export async function createFolder(parent: string, name: string): Promise<boolea
     toast.error(humanError(problem));
     return false;
   }
+}
+
+/** What a shortcut acts on: the file on screen while the viewer is open, else
+ *  the chosen files on the wall. */
+export function actedOn(): string[] {
+  const { browse } = session();
+  if (!browse.viewing) return chosen(browse);
+  return browse.selected ? [browse.selected] : [];
+}
+
+/** `file` puts the files on the clipboard the way Finder's ⌘C does, so a paste
+ *  in Finder copies them and a paste in a chat attaches them. `path` puts their
+ *  absolute paths, one per line. */
+export async function copyEntries(relPaths: string[], as: "file" | "path") {
+  if (relPaths.length === 0) return;
+  try {
+    await api.copy(relPaths, as);
+    const one = relPaths.length === 1;
+    if (as === "path") toast.success(one ? "已拷贝路径" : `已拷贝 ${relPaths.length} 条路径`);
+    else toast.success(one ? `已拷贝「${nameOf(relPaths[0] ?? "")}」` : `已拷贝 ${relPaths.length} 项素材`);
+  } catch (problem) {
+    toast.error(humanError(problem));
+  }
+}
+
+export const revealEntry = (relPath: string) => void api.reveal(relPath).catch(() => undefined);
+
+/** From the viewer the wall has to show the answer, so the viewer steps aside first. */
+export function findSimilarFromHere(relPath: string) {
+  closeViewer();
+  void findSimilar(relPath);
 }
 
 export const openViewer = () => dispatch({ type: "VIEWER", open: true });

@@ -3,6 +3,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { EmptyWall } from "@/features/browse/EmptyWall";
 import { Toolbar } from "@/features/browse/Toolbar";
+import { useFileHotkeys } from "@/features/browse/use-file-hotkeys";
 import { DropImport } from "@/features/import/DropImport";
 import { Onboarding, useWelcome } from "@/features/onboarding/Onboarding";
 import { ScopeDialog } from "@/features/scope/ScopeDialog";
@@ -23,6 +24,7 @@ export function App() {
   // welcome table and returns, as the person left it, once a folder opens.
   const welcome = useWelcome();
   const [sidebar, setSidebar] = useState(true);
+  useFileHotkeys();
   return (
     <SidebarProvider
       open={sidebar && !welcome}

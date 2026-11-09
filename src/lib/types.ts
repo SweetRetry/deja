@@ -51,7 +51,7 @@ export type VaultView = {
 
 /** What the backend acts on: the model process. It lives in settings.json
  *  under the app's data dir (settings.rs). */
-export type AppSettings = { semantic: boolean; modelIdleSecs: number };
+export type AppSettings = { semantic: boolean; modelIdleSecs: number; mcp: boolean };
 
 export type Sort = "name" | "modified" | "size" | "rating";
 

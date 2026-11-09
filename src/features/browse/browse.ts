@@ -222,12 +222,14 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
       const hit = browse.selected !== null && removed.has(browse.selected);
       const at = hit ? gone(shown.slice(0, Math.max(0, shown.indexOf(browse.selected ?? "")))).length : 0;
       const { lens, copies } = browse;
+      const selected = hit ? (left[at] ?? left[at - 1] ?? null) : browse.selected;
       return {
         ...browse,
-        selected: hit ? (left[at] ?? left[at - 1] ?? null) : browse.selected,
+        selected,
         picked: gone(browse.picked),
-        // A viewer can only show a file that still exists.
-        viewing: browse.viewing && !hit,
+        // Deleting from the viewer steps on to the next file, as on the wall;
+        // it closes only when nothing is left to show.
+        viewing: browse.viewing && selected !== null,
         results: { ...browse.results, paths: gone(browse.results.paths) },
         lens: lens?.kind === "similar" && lens.paths ? { ...lens, paths: gone(lens.paths) } : lens,
         // A group down to one file has no copies left.

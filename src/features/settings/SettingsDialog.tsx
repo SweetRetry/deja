@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { GearSixIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Segmented } from "@/components/ui/segmented";
 import { Slider } from "@/components/ui/slider";
 import { saveSettings } from "@/features/vault/commands";
+import { api } from "@/lib/bridge";
+import { humanError } from "@/lib/errors";
 import { useHotkey } from "@/lib/use-hotkey";
 import type { AppSettings } from "@/lib/types";
 import {
@@ -187,6 +190,57 @@ function SemanticSection({ settings }: { settings: AppSettings }) {
   );
 }
 
+/** The address the backend listens on; asked once, since it never changes while the app runs. */
+function useMcpUrl() {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    api.mcpStatus().then(({ url }) => setUrl(url), () => undefined);
+  }, []);
+  return url;
+}
+
+async function copyText(text: string, done: string) {
+  try {
+    await api.copyText(text);
+    toast.success(done);
+  } catch (problem) {
+    toast.error(humanError(problem));
+  }
+}
+
+/** Lets an agent on this Mac (Claude Code, Cursor) search and tag the open
+ *  folder. Off until asked for: it is a port any local program can reach. */
+function McpSection({ settings }: { settings: AppSettings }) {
+  const url = useMcpUrl();
+  const command = url ? `claude mcp add --transport http deja ${url}` : null;
+  return (
+    <Section title="MCP">
+      <Row
+        label="允许本机 Agent 访问"
+        hint={
+          settings.mcp
+            ? `本机的 Agent 可以搜索当前文件夹、查看素材，修改标签、评分和备注。不能删除或移动文件。地址 ${url ?? ""}`
+            : "开启后，Claude Code、Cursor 等本机 Agent 可以通过 MCP 搜索这个文件夹。仅限本机连接。"
+        }
+      >
+        <Segmented
+          label="允许本机 Agent 访问"
+          options={SEMANTIC}
+          value={settings.mcp}
+          onChange={(mcp) => saveSettings({ ...settings, mcp })}
+        />
+      </Row>
+      {settings.mcp && command ? (
+        <Row label="添加到 Claude Code" hint={command}>
+          <Button variant="secondary" size="sm" onClick={() => void copyText(command, "已拷贝命令")}>
+            拷贝命令
+          </Button>
+        </Row>
+      ) : null}
+    </Section>
+  );
+}
+
 /** Set-and-forget decisions: how the window looks and what the model may
  *  cost. Every change applies at once. */
 export function SettingsDialog() {
@@ -210,6 +264,7 @@ export function SettingsDialog() {
         <div ref={body} tabIndex={-1} className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 pt-1 pb-5 outline-none">
           <AppearanceSection />
           {settings ? <SemanticSection settings={settings} /> : null}
+          {settings ? <McpSection settings={settings} /> : null}
         </div>
       </DialogContent>
     </Dialog>
