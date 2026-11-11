@@ -86,8 +86,9 @@ pub struct Computed {
 }
 
 /// Bumped when what `thumb::build` derives changes. 1: dhash reads the whole
-/// picture, not its top-left corner.
-pub const ANALYSIS: u32 = 1;
+/// picture, not its top-left corner. 2: clips indexed by a Finder-launched app,
+/// which never found ffmpeg, get their still.
+pub const ANALYSIS: u32 = 2;
 
 impl Computed {
   pub fn matches(&self, file: &scan::RawFile) -> bool {
@@ -306,6 +307,7 @@ fn snapshot(engine: &Engine, sort: &str) -> Value {
     "indexed": progress.indexed,
     "embedded": progress.embedded,
     "total": progress.total,
+    "remaining": progress.remaining,
     "phase": phase_of(progress.remaining, progress.embedded, progress.total),
   })
 }

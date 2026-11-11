@@ -20,9 +20,20 @@ pub fn trash(paths: &[PathBuf], into: Option<&Path>) -> Result<(), String> {
   Ok(())
 }
 
+/// An app opened from Finder inherits launchd's PATH, which lacks Homebrew, so
+/// a tool like ffmpeg is looked for there too.
+fn locate(bin: &str) -> PathBuf {
+  let path = std::env::var_os("PATH").unwrap_or_default();
+  std::env::split_paths(&path)
+    .chain(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from))
+    .map(|dir| dir.join(bin))
+    .find(|candidate| candidate.is_file())
+    .unwrap_or_else(|| PathBuf::from(bin))
+}
+
 /// Runs a system tool with no shell. Returns stdout on success.
 pub fn run(bin: &str, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Option<String> {
-  let output = Command::new(bin)
+  let output = Command::new(locate(bin))
     .args(args)
     .stdin(Stdio::null())
     .stderr(Stdio::null())

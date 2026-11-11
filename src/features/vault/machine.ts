@@ -76,7 +76,7 @@ function phaseFor({ embedded, total, remaining }: Progress): Phase {
 }
 
 function progressOf(view: VaultView): Progress {
-  return { indexed: view.indexed, embedded: view.embedded, total: view.total, remaining: view.total - view.indexed };
+  return { indexed: view.indexed, embedded: view.embedded, total: view.total, remaining: view.remaining };
 }
 
 function metaOf(entry: Entry): EntryMeta {

@@ -51,6 +51,7 @@ const open = run([
       indexed: 3,
       embedded: 3,
       total: 3,
+      remaining: 0,
     },
   },
 ]);
@@ -124,7 +125,7 @@ test("an import selects what arrived and leaves the similar view", () => {
   const similar = reduce(open, { type: "SIMILAR_REQUESTED", source: "a.jpg" });
   const imported = reduce(similar, {
     type: "RESCANNED",
-    view: { root: "/v", folders: [], scope, entries: [entry("new.jpg")], indexed: 0, embedded: 0, total: 1 },
+    view: { root: "/v", folders: [], scope, entries: [entry("new.jpg")], indexed: 0, embedded: 0, total: 1, remaining: 1 },
     select: "new.jpg",
   });
   assert.equal(imported.browse.selected, "new.jpg");
@@ -178,7 +179,7 @@ test("an answer from the previous folder cannot land in the next one", () => {
 });
 
 test("a rescan of the previous folder cannot land in the next one", () => {
-  const other = { root: "/elsewhere", folders: [], scope, entries: [entry("z.jpg")], indexed: 1, embedded: 1, total: 1 };
+  const other = { root: "/elsewhere", folders: [], scope, entries: [entry("z.jpg")], indexed: 1, embedded: 1, total: 1, remaining: 0 };
   assert.equal(reduce(open, { type: "RESCANNED", view: other, select: "z.jpg" }), open);
   assert.equal(reduce(open, { type: "SCOPED", view: other }), open);
 });

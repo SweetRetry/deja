@@ -32,8 +32,8 @@ function entry(relPath: string, extra: Partial<Entry> = {}): Entry {
 
 const chosen: Scope = { chosen: true, excluded: [], tree: [] };
 
-function view(entries: Entry[], indexed = 0, embedded = 0, scope = chosen): VaultView {
-  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length };
+function view(entries: Entry[], indexed = 0, embedded = 0, scope = chosen, remaining = entries.length - indexed): VaultView {
+  return { root: "/v", folders: [], scope, entries, indexed, embedded, total: entries.length, remaining };
 }
 
 const four = [entry("a.jpg"), entry("b.jpg"), entry("p/c.jpg"), entry("p/q/d.jpg")];
@@ -50,6 +50,14 @@ test("opening leads to deriving, not straight to ready", () => {
   const vault = run([{ type: "OPEN", path: "/v" }, opened]);
   assert.equal(vault.phase, "deriving");
   assert.equal(shouldIndex(vault), true);
+});
+
+// A cache from an older analysis covers every file yet owes them all a redo;
+// reading it as done left clips without a still forever.
+test("an open whose cache is stale still derives", () => {
+  const stale = view(four, 4, 4, chosen, 4);
+  const vault = run([{ type: "OPEN", path: "/v" }, { type: "OPENED", view: stale }]);
+  assert.equal(vault.phase, "deriving");
 });
 
 test("an open counts files under every folder once", () => {

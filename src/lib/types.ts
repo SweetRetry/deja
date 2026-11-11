@@ -47,6 +47,9 @@ export type VaultView = {
   indexed: number;
   embedded: number;
   total: number;
+  /** Files still to derive. Not `total - indexed`: a cached result from an
+   *  older analysis, or for a file changed since, counts as indexed but is owed. */
+  remaining: number;
 };
 
 /** What the backend acts on: the model process. It lives in settings.json
