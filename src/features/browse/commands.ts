@@ -118,7 +118,7 @@ export async function createFolder(parent: string, name: string): Promise<boolea
   try {
     const { folder, view } = await api.createFolder(parent, name);
     dispatch({ type: "RESCANNED", view });
-    filterWall({ folder });
+    filterWall({ folder, direct: false });
     return true;
   } catch (problem) {
     toast.error(humanError(problem));

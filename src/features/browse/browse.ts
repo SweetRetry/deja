@@ -260,7 +260,9 @@ function step(browse: BrowseState, event: SessionEvent): BrowseState {
       // search or filter hiding it is cleared. Decided from the inputs, not the
       // results, which may still be in flight.
       const keep = isPlainFolder(browse.query, browse.filter) &&
-        (browse.filter.folder === "" || event.relPath.startsWith(`${browse.filter.folder}/`));
+        (browse.filter.direct
+          ? parentOf(event.relPath) === browse.filter.folder
+          : browse.filter.folder === "" || event.relPath.startsWith(`${browse.filter.folder}/`));
       return {
         ...browse,
         lens: null,

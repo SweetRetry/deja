@@ -2,15 +2,18 @@ import { CaretRightIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
 import { cn } from "@/lib/utils";
 import { patchFilter } from "./commands";
+import { UNFILED } from "./filter";
 
 /** Where the wall is scoped: the vault root, then each folder down to the
  *  current one. Ancestors navigate up; the last crumb is the current view. */
 export function Breadcrumb() {
   const folder = useSession((s) => s.browse.filter.folder);
+  const unfiled = useSession((s) => s.browse.filter.direct && s.browse.filter.folder === "");
   const parts = folder ? folder.split("/") : [];
   const crumbs = [
     { rel: "", name: "全部素材" },
     ...parts.map((name, i) => ({ rel: parts.slice(0, i + 1).join("/"), name })),
+    ...(unfiled ? [{ rel: "/unfiled", name: UNFILED }] : []),
   ];
 
   return (
@@ -29,7 +32,7 @@ export function Breadcrumb() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => patchFilter({ folder: crumb.rel })}
+                    onClick={() => patchFilter({ folder: crumb.rel, direct: false })}
                     className="truncate rounded-sm text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {crumb.name}

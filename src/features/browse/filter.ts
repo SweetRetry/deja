@@ -2,6 +2,9 @@
 // button, the empty state and locate all agree.
 import { COLOR_PRESETS, emptyFilter, type Filter, type Kind } from "../../lib/types.ts";
 
+/** The files at the vault's root, which sit in no folder. */
+export const UNFILED = "未归档";
+
 /** Filters the user narrows with; the folder and tag scope the view instead. */
 export function narrowing(filter: Filter) {
   const kind: Kind | "" = filter.kinds[0] ?? "";
@@ -20,7 +23,7 @@ export function isFiltering(filter: Filter): boolean {
 
 /** Drops every narrowing filter and keeps where the view is scoped. */
 export function clearNarrowing(filter: Filter): Filter {
-  return { ...emptyFilter, folder: filter.folder, tag: filter.tag };
+  return { ...emptyFilter, folder: filter.folder, direct: filter.direct, tag: filter.tag };
 }
 
 /** No query and nothing narrowing: the wall is a folder as it is on disk. */

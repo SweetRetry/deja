@@ -53,6 +53,9 @@ export function emptyState({ query, filter, folderTotal, lens, vaultTotal = 0 }:
   if (filtering) {
     return { title: "没有符合筛选条件的素材", body: restore, action: "clear-filters" };
   }
+  if (filter.direct && filter.folder === "") {
+    return { title: "没有未归档的素材", body: "放在库根目录、不在任何文件夹里的素材会列在这里。", action: null };
+  }
   return {
     title: "此文件夹中没有图片或视频",
     body: "放入图片或视频后，Déjà 自动生成预览并建立语义索引。",

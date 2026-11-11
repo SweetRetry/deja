@@ -67,6 +67,9 @@ export type Filter = {
   minRating: number;
   color: string;
   folder: string;
+  /** Only files in `folder` itself, none from its subfolders. With folder ""
+   *  that is the files at the vault's root, shown as 未归档. */
+  direct: boolean;
   tag: string;
 };
 
@@ -114,6 +117,7 @@ export const emptyFilter: Filter = {
   minRating: 0,
   color: "",
   folder: "",
+  direct: false,
   tag: "",
 };
 

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon } from "@phosphor-icons/react";
+import { CopyIcon, DotsThreeIcon, FolderSimpleIcon, FolderSimplePlusIcon, ImagesIcon, TrayIcon } from "@phosphor-icons/react";
 import { useSession } from "@/app/store";
 import { createFolder, filterWall, findDuplicates, moveEntries } from "@/features/browse/commands";
 import { carriesEntries, droppedEntries } from "@/features/browse/drag";
+import { UNFILED } from "@/features/browse/filter";
 import { setPreferences, usePreferences } from "@/features/settings/preferences";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { RollingNumber } from "@/components/ui/rolling-number";
-import { folderRows, gutter as gutterOf, INDENT, openAncestors, visibleFolders, type FolderRow } from "./folder-tree";
+import { folderRows, gutter as gutterOf, INDENT, openAncestors, visibleFolders } from "./folder-tree";
 import { TreeToggle } from "./TreeToggle";
 
 function Count({ value }: { value: number }) {
@@ -101,23 +102,27 @@ function FolderActions({ onCreate }: { onCreate: () => void }) {
 /** How long a dragged file rests on a shut folder before it opens. */
 const DRAG_OPEN_DELAY = 600;
 
-/** A folder row that takes files dragged from the wall. `dragover` repeats
+/** A row that takes files dragged from the wall and moves them into `rel`. `dragover` repeats
  *  while the pointer is held, so hover is "a dragover in the last 150 ms"
  *  instead of counting enter and leave pairs, which child elements unbalance. */
 function FolderButton({
-  row,
+  rel,
+  name,
+  icon = <FolderSimpleIcon aria-hidden />,
   active,
   inset,
   count,
   onOpen,
   onHover,
 }: {
-  row: FolderRow;
+  rel: string;
+  name: string;
+  icon?: React.ReactNode;
   active: boolean;
-  inset: number;
+  inset?: number;
   count: number;
   onOpen: () => void;
-  onHover: () => void;
+  onHover?: () => void;
 }) {
   const [over, setOver] = useState(false);
   const idle = useRef<number | undefined>(undefined);
@@ -140,22 +145,22 @@ function FolderButton({
         setOver(true);
         window.clearTimeout(idle.current);
         idle.current = window.setTimeout(end, 150);
-        opening.current ??= window.setTimeout(onHover, DRAG_OPEN_DELAY);
+        if (onHover) opening.current ??= window.setTimeout(onHover, DRAG_OPEN_DELAY);
       }}
       onDrop={(event) => {
         if (!carriesEntries(event.dataTransfer)) return;
         event.preventDefault();
         end();
-        void moveEntries(droppedEntries(event.dataTransfer), row.rel);
+        void moveEntries(droppedEntries(event.dataTransfer), rel);
       }}
       data-drop-target={over ? "true" : undefined}
       className={over ? "bg-sidebar-accent ring-1 ring-sidebar-ring" : undefined}
       style={{ paddingLeft: inset }}
       // The tooltip only shows while the sidebar is collapsed; a cut-off name still reads in full.
-      title={row.name}
+      title={name}
     >
-      <FolderSimpleIcon aria-hidden />
-      <span className="truncate">{row.name}</span>
+      {icon}
+      <span className="truncate">{name}</span>
       <Count value={count} />
     </SidebarMenuButton>
   );
@@ -167,8 +172,10 @@ export function FolderNav() {
   const lens = useSession((s) => s.browse.lens?.kind ?? null);
   // Every file in a group, as the duplicates view shows them; nothing until compared.
   const copies = useSession((s) => s.browse.copies?.reduce((sum, group) => sum + group.paths.length, 0) ?? null);
-  // A folder row is only active while the wall shows that folder.
-  const active = useSession((s) => (s.browse.lens ? null : s.browse.filter.folder));
+  const unfiled = useSession((s) => s.vault.library?.unfiled ?? 0);
+  // A folder row is only active while the wall shows that folder, subfolders included.
+  const active = useSession((s) => (s.browse.lens || s.browse.filter.direct ? null : s.browse.filter.folder));
+  const unfiledActive = useSession((s) => !s.browse.lens && s.browse.filter.direct && s.browse.filter.folder === "");
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const [shown, setShown] = useState(active);
   if (shown !== active) {
@@ -204,7 +211,7 @@ export function FolderNav() {
       <SidebarGroup>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton isActive={active === ""} onClick={() => filterWall({ folder: "" })}>
+            <SidebarMenuButton isActive={active === ""} onClick={() => filterWall({ folder: "", direct: false })}>
               <ImagesIcon aria-hidden />
               <span className="truncate">全部素材</span>
               <Count value={counts?.[""] ?? 0} />
@@ -217,6 +224,20 @@ export function FolderNav() {
               {copies === null ? null : <Count value={copies} />}
             </SidebarMenuButton>
           </SidebarMenuItem>
+          {/* Files dropped at the root are in no folder, so only 全部素材 would
+              list them. Nothing to show when every file is filed. */}
+          {unfiled > 0 || unfiledActive ? (
+            <SidebarMenuItem>
+              <FolderButton
+                rel=""
+                name={UNFILED}
+                icon={<TrayIcon aria-hidden />}
+                active={unfiledActive}
+                count={unfiled}
+                onOpen={() => filterWall({ folder: "", direct: true })}
+              />
+            </SidebarMenuItem>
+          ) : null}
         </SidebarMenu>
       </SidebarGroup>
 
@@ -233,11 +254,12 @@ export function FolderNav() {
                 <ContextMenu>
                   <ContextMenuTrigger className="block">
                     <FolderButton
-                      row={row}
+                      rel={row.rel}
+                      name={row.name}
                       active={active === row.rel}
                       inset={8 + gutter + row.depth * INDENT}
                       count={counts?.[row.rel] ?? 0}
-                      onOpen={() => filterWall({ folder: row.rel })}
+                      onOpen={() => filterWall({ folder: row.rel, direct: false })}
                       onHover={() => setToggled((state) => (row.hasChildren && !row.expanded ? { ...state, [row.rel]: true } : state))}
                     />
                   </ContextMenuTrigger>

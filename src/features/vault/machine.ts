@@ -28,6 +28,8 @@ export type Library = {
   byPath: Record<string, Entry>;
   /** Files under each folder path; "" is the whole vault. */
   counts: Record<string, number>;
+  /** Files at the vault's root, in no folder. */
+  unfiled: number;
 };
 
 /** An edit not yet confirmed by disk, and the entry to return to if it fails. */
@@ -112,6 +114,7 @@ function libraryOf(view: VaultView, saving: Record<string, Saving>, previous: Li
     // A view lists every file, so a file missing from it is gone.
     byPath: Object.fromEntries(view.entries.map((entry) => [entry.relPath, adopt(entry, previous?.byPath ?? {}, saving)])),
     counts,
+    unfiled: view.entries.filter((entry) => !entry.relPath.includes("/")).length,
   };
 }
 

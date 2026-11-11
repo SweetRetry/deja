@@ -23,8 +23,9 @@ export function classify(previous: SearchInputs | null, next: SearchInputs): Sea
   const sameFilter = Object.is(next.filter, previous.filter);
   const sameOrder = Object.is(next.sort, previous.sort) && Object.is(next.ranking, previous.ranking);
   if (sameQuery && sameFilter && sameOrder) return "quiet";
+  const where = (filter: SearchInputs["filter"]) => ({ ...filter, folder: "", direct: false });
   const onlyFolder =
-    next.filter.folder !== previous.filter.folder &&
-    JSON.stringify({ ...next.filter, folder: "" }) === JSON.stringify({ ...previous.filter, folder: "" });
+    (next.filter.folder !== previous.filter.folder || next.filter.direct !== previous.filter.direct) &&
+    JSON.stringify(where(next.filter)) === JSON.stringify(where(previous.filter));
   return sameQuery && sameOrder && onlyFolder ? "navigated" : "typed";
 }

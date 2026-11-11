@@ -7,7 +7,10 @@ import { emptyState } from "./empty-state";
 export function EmptyWall() {
   const query = useSession((s) => s.browse.query);
   const filter = useSession((s) => s.browse.filter);
-  const folderTotal = useSession((s) => s.vault.library?.counts[s.browse.filter.folder] ?? 0);
+  const folderTotal = useSession((s) => {
+    const { folder, direct } = s.browse.filter;
+    return (direct && folder === "" ? s.vault.library?.unfiled : s.vault.library?.counts[folder]) ?? 0;
+  });
   const lens = useSession((s) => s.browse.lens?.kind ?? null);
   const vaultTotal = useSession((s) => s.vault.library?.counts[""] ?? 0);
   const { title, body, action } = emptyState({ query, filter, folderTotal, lens, vaultTotal });

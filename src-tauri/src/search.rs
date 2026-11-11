@@ -17,6 +17,9 @@ pub struct Filter {
   #[serde(deserialize_with = "family_or_none")]
   pub color: Option<Family>,
   pub folder: Option<String>,
+  /// Only files sitting in `folder` itself, none from its subfolders. With
+  /// no folder, the files at the vault's root: the ones never filed.
+  pub direct: bool,
   pub min_rating: Option<u8>,
   pub tag: Option<String>,
 }
@@ -100,10 +103,14 @@ pub fn passes(entry: &Entry, filter: &Filter) -> bool {
   if !filter.kinds.is_empty() && !filter.kinds.contains(&entry.kind) {
     return false;
   }
-  if let Some(folder) = filter.folder.as_deref().filter(|f| !f.is_empty()) {
-    if !entry.rel_path.starts_with(&format!("{folder}/")) && entry.rel_path != folder {
+  let folder = filter.folder.as_deref().unwrap_or("");
+  if filter.direct {
+    let parent = entry.rel_path.rsplit_once('/').map_or("", |(parent, _)| parent);
+    if parent != folder {
       return false;
     }
+  } else if !folder.is_empty() && !entry.rel_path.starts_with(&format!("{folder}/")) && entry.rel_path != folder {
+    return false;
   }
   if let Some(min) = filter.min_width.filter(|m| *m > 0) {
     if entry.width.unwrap_or(0) < min {
@@ -363,6 +370,17 @@ mod tests {
     assert!(passes(&item, &filter));
     filter = Filter { color: Some(Family::Green), ..Default::default() };
     assert!(!passes(&item, &filter));
+  }
+
+  #[test]
+  fn direct_keeps_only_the_files_in_the_folder_itself() {
+    let loose = entry("a.png", "a.png", &[], "");
+    let filed = entry("b.png", "摄影/b.png", &[], "");
+    let deeper = entry("c.png", "摄影/海/c.png", &[], "");
+    let unfiled = Filter { direct: true, ..Default::default() };
+    assert_eq!([&loose, &filed, &deeper].map(|e| passes(e, &unfiled)), [true, false, false]);
+    let photos = Filter { folder: Some("摄影".into()), direct: true, ..Default::default() };
+    assert_eq!([&loose, &filed, &deeper].map(|e| passes(e, &photos)), [false, true, false]);
   }
 
   #[test]
